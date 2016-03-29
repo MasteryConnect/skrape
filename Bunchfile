@@ -1,4 +1,4 @@
-bitbucket.org/masteryconnectetl/skrape !self
+github.com/MasteryConnect/skrape !self
 github.com/codegangsta/cli
 github.com/apex/log
 golang.org/x/crypto/ssh/terminal
