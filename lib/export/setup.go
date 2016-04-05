@@ -10,21 +10,41 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-var defaultFile string
-var mysqlDumpPath string
+const DefaultFile = "/tmp/mysql-cnf.cnf"
 
-func Setup(host, user, port string) ([]string, string) {
-	var args []string
-	fmt.Print("Enter Password: ")
-	bytePwd, err := terminal.ReadPassword(syscall.Stdin)
-	fmt.Println("")
-	if err != nil {
-		log.Fatal(err.Error())
+type Parameters struct {
+	Host     string
+	User     string
+	Port     string
+	Database string
+	Table    string
+	All      bool
+}
+
+func NewParameters(host, user, port, db string) *Parameters { // Will setup to default for exporting all tables
+	params := &Parameters{
+		Host:     host,
+		User:     user,
+		Port:     port,
+		Database: db,
+		Table:    "",
+		All:      true,
 	}
-	args = append(args, fmt.Sprintf("--defaults-file=%s", mysqlDefaults(string(bytePwd))))
-	args = append(args, fmt.Sprintf("--host %s", host))
-	if port != "" {
-		args = append(args, fmt.Sprintf("--port %s", port))
+
+	return params
+}
+
+func (p *Parameters) Setup() []string {
+	if _, err := os.Stat(DefaultFile); err != nil {
+		log.Info("defaults file is missing")
+		p.MysqlDefaults()
+	}
+	var args []string
+	args = append(args, fmt.Sprintf("--defaults-file=%s", DefaultFile))
+	args = append(args, fmt.Sprintf("--host=%s", p.Host))
+	args = append(args, fmt.Sprintf("--user=%s", p.User))
+	if p.Port != "" {
+		args = append(args, fmt.Sprintf("--port=%s", p.Port))
 	}
 	args = append(args, "--skip-opt")
 	args = append(args, "--compact")
@@ -32,24 +52,28 @@ func Setup(host, user, port string) ([]string, string) {
 	args = append(args, "--no-create-info")
 	args = append(args, "--quick")
 	args = append(args, "--single-transaction")
-	return args, defaultFile
+	args = append(args, p.Database)
+	if p.All == false {
+		args = append(args, p.Table)
+	}
+	return args
 }
 
-func mysqlDefaults(pwd string) string {
-	defaultFile = "/tmp/mysql-cnf.cnf"
-	file, err := os.Create(defaultFile)
+func (p *Parameters) MysqlDefaults() string {
+	fmt.Print("Enter Password: ")
+	bytePwd, err := terminal.ReadPassword(syscall.Stdin)
+	fmt.Println("")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	file, err := os.Create(DefaultFile)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	defer file.Close()
 
 	w := bufio.NewWriter(file)
-	_, err = w.WriteString("[client]\n")
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
-	_, err = w.WriteString(pwd)
+	_, err = w.WriteString(fmt.Sprintf("[client]\npassword=%s", string(bytePwd)))
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -57,5 +81,5 @@ func mysqlDefaults(pwd string) string {
 	w.Flush()
 	file.Chmod(0600)
 
-	return defaultFile
+	return DefaultFile
 }

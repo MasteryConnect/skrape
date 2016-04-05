@@ -19,7 +19,7 @@ const (
 
 var mysqlDumpPath string
 
-func VerifyMysqldump(path string) bool {
+func VerifyMysqldump(path string) {
 	found := false
 	// Check custom path if it exists
 	if path != "" {
@@ -38,13 +38,15 @@ func VerifyMysqldump(path string) bool {
 	// Finally ask the OS for the version
 	if found == true {
 		if questionOs(path) == true {
-			return found
+			found = true
 		} else {
 			found = false
-			printMsg()
 		}
 	}
-	return found
+
+	if found == false {
+		printWarning()
+	}
 }
 
 func questionOs(path string) bool {
@@ -84,7 +86,7 @@ func questionOs(path string) bool {
 	return false
 }
 
-func printMsg() {
+func printWarning() {
 	str := `mysqldump Ver 10.13 or greater is required.
  The mysqldump binary is either not installed
  or is located in a non-typical location. If you are
@@ -92,7 +94,8 @@ func printMsg() {
  using the --mysqldump-path flag to point to where the binary
  is located.
 `
-	log.Info(str)
+	fmt.Println(str)
+	os.Exit(1)
 }
 
 func getPath(path string) (p string) {
