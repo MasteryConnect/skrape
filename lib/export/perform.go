@@ -7,20 +7,55 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	// "regexp"
+	"sync"
 
 	utils "github.com/MasteryConnect/skrape/lib/mysqlutils"
 	"github.com/apex/log"
 )
 
-func (p *Parameters) Perform(c chan bool) { // Perform the export from MySQL RDBMS to CSV files
-	args := p.Setup()
+type Table struct {
+	Name   string
+	File   *os.File
+	Buffer *bufio.Writer
+	Data   chan string
+}
 
+func (p Parameters) NewTable(size int) *Table {
+	var path string
+	if p.Connection.Destination[len(p.Connection.Destination)-1:] == "/" { // store path without trailing slash for consistency
+		path = p.Connection.Destination[:len(p.Connection.Destination)-1]
+	} else {
+		path = p.Connection.Destination
+	}
+	file, _ := os.Create(fmt.Sprintf("%s/%s.csv", path, p.Table))
+	buf := bufio.NewWriter(file)
+	t := &Table{}
+	t.Name = p.Table
+	t.Data = make(chan string, 500)
+	t.File = file
+	t.Buffer = buf
+	return t
+}
+
+func (table *Table) Write(wg sync.WaitGroup) {
+	defer table.File.Close()
+	defer wg.Done()
+	for str := range table.Data {
+		table.Buffer.WriteString(str)
+		table.Buffer.Flush()
+	}
+}
+
+func (p *Parameters) Perform(wg sync.WaitGroup) { // Perform the export from MySQL RDBMS to CSV files
+	defer wg.Done()
+	args := p.Setup()
 	app := utils.GetBinary()
 	cmd := exec.Command(app, args...)
-
 	cmdReader, err := cmd.StdoutPipe()
 	cmdError, err := cmd.StderrPipe()
+
+	var wait sync.WaitGroup
+
 	if err != nil {
 		_, file, line, _ := runtime.Caller(1)
 		log.WithFields(log.Fields{
@@ -29,6 +64,7 @@ func (p *Parameters) Perform(c chan bool) { // Perform the export from MySQL RDB
 		}).Errorf("Error creating StdoutPipe for Cmd: %v\n%", err)
 	}
 
+	// Monitor errors thrown by exec.Cmd
 	scannerErr := bufio.NewScanner(cmdError)
 	go func() {
 		for scannerErr.Scan() {
@@ -41,11 +77,15 @@ func (p *Parameters) Perform(c chan bool) { // Perform the export from MySQL RDB
 		}
 	}()
 
+	table := p.NewTable(500)
+
+	wait.Add(1)
+	go table.Write(wait)
+
 	scanner := bufio.NewScanner(cmdReader)
-	file, _ := os.Create(fmt.Sprintf("test/%s.csv", p.Table))
-	buf := bufio.NewWriterSize(file, 524288000)
-	go func(s *bufio.Scanner, buf *bufio.Writer, file *os.File, c chan bool) {
-		defer file.Close()
+	wait.Add(1)
+	go func(s *bufio.Scanner, table *Table) {
+		defer wait.Done()
 		var txt string
 		preambleLen := -1
 		recordStartMark := "VALUES ("
@@ -61,27 +101,15 @@ func (p *Parameters) Perform(c chan bool) { // Perform the export from MySQL RDB
 			}
 
 			if len(txt) > preambleLen {
-				_, err = buf.WriteString(fmt.Sprintf("%s\n", txt[preambleLen:len(txt)-2]))
-				if err != nil {
-					log.Warn(err.Error())
-				}
+				parsed := txt[preambleLen : len(txt)-2]
+				table.Data <- fmt.Sprintf("%s\n", parsed)
 			} else { // log out bad value strings and continue
 				log.Warn(fmt.Sprintf("%s\n", txt))
 				continue
 			}
-			if buf.Available() < 2097152 {
-				buf.Flush()
-			}
 		}
-		if buf.Buffered() > 0 { // Make sure buffer is flushed in case its overall size is less than 2MB
-			log.Infof("Buffer Amount: %v", buf.Buffered())
-			err = buf.Flush()
-			if err != nil {
-				log.Error(err.Error())
-			}
-		}
-		c <- true
-	}(scanner, buf, file, c)
+		close(table.Data)
+	}(scanner, table)
 
 	err = cmd.Start()
 	if err != nil {
@@ -100,4 +128,5 @@ func (p *Parameters) Perform(c chan bool) { // Perform the export from MySQL RDB
 			"line": line,
 		}).Error(err.Error())
 	}
+	wait.Wait()
 }

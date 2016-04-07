@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sync"
 
 	"github.com/apex/log"
 	_ "github.com/go-sql-driver/mysql"
@@ -37,7 +38,6 @@ func NewTables(names []string) (t Tables) {
 
 func (p *Parameters) TableLookUp() {
 	var tableNames []string
-	c := make(chan bool)
 
 	// retrieve password from default file
 	pwd := getPwd()
@@ -95,38 +95,35 @@ func (p *Parameters) TableLookUp() {
 	}
 
 	// split tables evenly-ish into two slices
-	tables := NewTables(tableNames)
+	// tables := NewTables(tableNames)
 
 	// loop over tables updating p struct Table (use goroutines to handle splits)
 	// and calling p.Perform()
 
-	for _, t := range tables.Halves {
-		fmt.Println(t)
-		go p.loopTables(t, c)
+	fmt.Println(tableNames)
+	var wg sync.WaitGroup
+	for _, name := range tableNames {
+		wg.Add(1)
+		perf := &Parameters{p.Connection, name, true}
+		go perf.Perform(wg)
 	}
-	x, y := <-c, <-c
+	wg.Wait()
 
-	fmt.Printf("Completed routines: %v, %v", x, y)
 }
 
-func (p *Parameters) loopTables(tables []string, c chan bool) {
-	for _, name := range tables {
-		ch := make(chan bool)
-		p.All = false
-		p.Table = name
-		log.Infof("Exporting: %s", p.Table)
-		go p.Perform(ch)
-		x := <-ch
-		log.Infof("Continuing: %s", p.Table)
-		if x == true { // This probably isn't necessary
-			continue
-		}
-	}
-	c <- true
-}
+// func (p *Parameters) loopTables(tables []string, c chan bool) {
+// 	for _, name := range tables {
+// 		ch := make(chan bool)
+// 		p.All = false
+// 		p.Table = name
+// 		log.Infof("Exporting: %s", p.Table)
+// 		go p.Perform(ch)
+// 	}
+// 	c <- true
+// }
 
 func (p *Parameters) formatDsn(pwd string) string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", p.User, pwd, p.Host, p.Port, p.Database)
+	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", p.Connection.User, pwd, p.Connection.Host, p.Connection.Port, p.Connection.Database)
 }
 
 func getPwd() string {

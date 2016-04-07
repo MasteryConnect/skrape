@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"sync"
 
 	utility "github.com/MasteryConnect/skrape/lib"
 	"github.com/MasteryConnect/skrape/lib/export"
@@ -17,14 +18,18 @@ func init() {
 
 func main() {
 	defer utility.Cleanup()
+
 	// cli flag vars
-	var mysqlDumpPath string
-	var host string
-	var port string
-	var user string
-	var database string
-	var table string
-	ch := make(chan bool)
+	var (
+		mysqlDumpPath string
+		host          string
+		port          string
+		user          string
+		database      string
+		table         string
+		dest          string
+		wg            sync.WaitGroup
+	)
 
 	app := cli.NewApp()
 	app.Name = "skrape"
@@ -67,23 +72,27 @@ func main() {
 			Value:       "",
 			Destination: &mysqlDumpPath,
 		},
+		cli.StringFlag{
+			Name:        "export-path, e",
+			Usage:       "set the path where you wish to export the CSV files",
+			Value:       "./",
+			Destination: &dest,
+		},
 	}
 
 	app.Action = func(c *cli.Context) {
 		mysqlutils.VerifyMysqldump(mysqlDumpPath)
-		params := export.NewParameters(host, user, port, database)
+		params := export.NewParameters(host, user, port, database, dest)
 		params.MysqlDefaults()
 		if table != "" {
 			params.Table = table
 			params.All = false
-			params.Perform(ch)
-			x := <-ch
-			if x == true {
-				log.Info("completed successfully")
-			}
+			wg.Add(1)
+			params.Perform(wg)
 		} else {
 			params.TableLookUp()
 		}
+		wg.Wait()
 	}
 	app.Run(os.Args)
 }
