@@ -2,7 +2,7 @@ package main
 
 import (
 	"os"
-	"sync"
+	"time"
 
 	utility "github.com/MasteryConnect/skrape/lib"
 	"github.com/MasteryConnect/skrape/lib/export"
@@ -12,12 +12,20 @@ import (
 	"github.com/codegangsta/cli"
 )
 
+const Concurrency = 10
+
 func init() {
 	log.SetHandler(text.New(os.Stderr))
 }
 
 func main() {
+	start := time.Now()
 	defer utility.Cleanup()
+	defer func(start time.Time) {
+		log.WithFields(log.Fields{
+			"Duration": time.Since(start).String(),
+		}).Info("Completed")
+	}(start)
 
 	// cli flag vars
 	var (
@@ -28,8 +36,10 @@ func main() {
 		database      string
 		table         string
 		dest          string
-		wg            sync.WaitGroup
+		pool          int
 	)
+	// App vars
+	var cncy int
 
 	app := cli.NewApp()
 	app.Name = "skrape"
@@ -78,21 +88,33 @@ func main() {
 			Value:       "./",
 			Destination: &dest,
 		},
+		cli.IntFlag{
+			Name:        "concurrency, C",
+			Usage:       "set the path where you wish to export the CSV files",
+			Destination: &pool,
+		},
+	}
+
+	if pool == 0 {
+		cncy = Concurrency
+	} else {
+		cncy = pool
 	}
 
 	app.Action = func(c *cli.Context) {
 		mysqlutils.VerifyMysqldump(mysqlDumpPath)
-		params := export.NewParameters(host, user, port, database, dest)
-		params.MysqlDefaults()
+		connect := export.NewConnection(host, user, port, database, dest, cncy)
+		export.MysqlDefaults()
 		if table != "" {
-			params.Table = table
-			params.All = false
-			wg.Add(1)
-			params.Perform(wg)
+			params := export.NewParameters(connect, export.NewTable(connect.Destination, table))
+			log.Info("Before channel")
+			chn := make(chan bool)
+			go params.Perform(chn)
+			chn <- true
+			log.Info("After channel")
 		} else {
-			params.TableLookUp()
+			connect.TableLookUp()
 		}
-		wg.Wait()
 	}
 	app.Run(os.Args)
 }

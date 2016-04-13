@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"sync"
 
 	"github.com/apex/log"
 	_ "github.com/go-sql-driver/mysql"
@@ -36,12 +35,12 @@ func NewTables(names []string) (t Tables) {
 	return
 }
 
-func (p *Parameters) TableLookUp() {
+func (c *Connection) TableLookUp() {
 	var tableNames []string
 
 	// retrieve password from default file
 	pwd := getPwd()
-	dsn := p.formatDsn(pwd)
+	dsn := c.formatDsn(pwd)
 
 	// create db connection
 	db, err := sql.Open("mysql", dsn)
@@ -101,13 +100,16 @@ func (p *Parameters) TableLookUp() {
 	// and calling p.Perform()
 
 	fmt.Println(tableNames)
-	var wg sync.WaitGroup
+	chn := make(chan bool, c.Concurrency)
 	for _, name := range tableNames {
-		wg.Add(1)
-		perf := &Parameters{p.Connection, name, true}
-		go perf.Perform(wg)
+		table := NewTable(c.Destination, name)
+		perf := NewParameters(c, table)
+		go perf.Perform(chn)
+		chn <- true
 	}
-	wg.Wait()
+	for i := 0; i < cap(chn); i++ {
+		chn <- true
+	}
 
 }
 
@@ -122,8 +124,8 @@ func (p *Parameters) TableLookUp() {
 // 	c <- true
 // }
 
-func (p *Parameters) formatDsn(pwd string) string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", p.Connection.User, pwd, p.Connection.Host, p.Connection.Port, p.Connection.Database)
+func (c *Connection) formatDsn(pwd string) string {
+	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", c.User, pwd, c.Host, c.Port, c.Database)
 }
 
 func getPwd() string {

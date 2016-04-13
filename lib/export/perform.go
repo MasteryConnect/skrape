@@ -13,6 +13,10 @@ import (
 	"github.com/apex/log"
 )
 
+const (
+	BufferSize = 104857600 // 100MB in bytes
+)
+
 type Table struct {
 	Name   string
 	File   *os.File
@@ -20,35 +24,46 @@ type Table struct {
 	Data   chan string
 }
 
-func (p Parameters) NewTable(size int) *Table {
-	var path string
-	if p.Connection.Destination[len(p.Connection.Destination)-1:] == "/" { // store path without trailing slash for consistency
-		path = p.Connection.Destination[:len(p.Connection.Destination)-1]
+func NewTable(path, name string) Table {
+	var p string
+	if path[len(path)-1:] == "/" { // store path without trailing slash for consistency
+		p = path[:len(path)-1]
 	} else {
-		path = p.Connection.Destination
+		p = path
 	}
-	file, _ := os.Create(fmt.Sprintf("%s/%s.csv", path, p.Table))
-	buf := bufio.NewWriter(file)
-	t := &Table{}
-	t.Name = p.Table
-	t.Data = make(chan string, 500)
+	file, _ := os.Create(fmt.Sprintf("%s/%s.csv", p, name))
+	buf := bufio.NewWriterSize(file, BufferSize)
+	t := Table{}
+	t.Name = name
+	t.Data = make(chan string, 10000)
 	t.File = file
 	t.Buffer = buf
 	return t
 }
 
-func (table *Table) Write(wg sync.WaitGroup) {
-	defer table.File.Close()
+func (table Table) Write(wg *sync.WaitGroup) {
 	defer wg.Done()
 	for str := range table.Data {
 		table.Buffer.WriteString(str)
-		table.Buffer.Flush()
+		if table.Buffer.Available() <= BufferSize*.1 {
+			table.Buffer.Flush()
+		}
 	}
 }
 
-func (p *Parameters) Perform(wg sync.WaitGroup) { // Perform the export from MySQL RDBMS to CSV files
-	defer wg.Done()
-	args := p.Setup()
+func (table *Table) Reset() {
+	table.Buffer.Flush()
+	table.Buffer = nil
+	table.File.Close()
+	table.File = nil
+	table.Data = nil
+}
+
+func (p Parameters) Perform(chn chan bool) { // Perform the export from MySQL RDBMS to CSV files
+	defer func() { p.Table.Reset() }()
+	defer func() { <-chn; log.Info("Start New Routine") }() // read off the semiphore channel to allow a new goroutine to start
+	args := p.Connection.Setup()
+	args = p.AddTable(args)
 	app := utils.GetBinary()
 	cmd := exec.Command(app, args...)
 	cmdReader, err := cmd.StdoutPipe()
@@ -77,21 +92,19 @@ func (p *Parameters) Perform(wg sync.WaitGroup) { // Perform the export from MyS
 		}
 	}()
 
-	table := p.NewTable(500)
-
 	wait.Add(1)
-	go table.Write(wait)
+	go p.Table.Write(&wait)
 
 	scanner := bufio.NewScanner(cmdReader)
 	wait.Add(1)
-	go func(s *bufio.Scanner, table *Table) {
+	go func() {
 		defer wait.Done()
 		var txt string
 		preambleLen := -1
 		recordStartMark := "VALUES ("
-		log.Warnf("Begin scanning for: %s", p.Table)
-		for s.Scan() {
-			txt = s.Text()
+		log.Warnf("Begin scanning for: %s", p.Table.Name)
+		for scanner.Scan() {
+			txt = scanner.Text()
 			if txt[0:1] == "--" { // skip any comments
 				continue
 			}
@@ -102,14 +115,14 @@ func (p *Parameters) Perform(wg sync.WaitGroup) { // Perform the export from MyS
 
 			if len(txt) > preambleLen {
 				parsed := txt[preambleLen : len(txt)-2]
-				table.Data <- fmt.Sprintf("%s\n", parsed)
+				p.Table.Data <- fmt.Sprintf("%s\n", parsed)
 			} else { // log out bad value strings and continue
 				log.Warn(fmt.Sprintf("%s\n", txt))
 				continue
 			}
 		}
-		close(table.Data)
-	}(scanner, table)
+		close(p.Table.Data)
+	}()
 
 	err = cmd.Start()
 	if err != nil {
@@ -129,4 +142,9 @@ func (p *Parameters) Perform(wg sync.WaitGroup) { // Perform the export from MyS
 		}).Error(err.Error())
 	}
 	wait.Wait()
+}
+
+func (p Parameters) AddTable(a []string) (args []string) {
+	args = append(a, p.Table.Name)
+	return
 }
