@@ -1,12 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"time"
 
-	utility "github.com/MasteryConnect/skrape/lib"
-	"github.com/MasteryConnect/skrape/lib/export"
 	"github.com/MasteryConnect/skrape/lib/mysqlutils"
+	"github.com/MasteryConnect/skrape/lib/skrape"
+	"github.com/MasteryConnect/skrape/lib/utility"
 	"github.com/apex/log"
 	"github.com/apex/log/handlers/text"
 	"github.com/codegangsta/cli"
@@ -19,13 +20,6 @@ func init() {
 }
 
 func main() {
-	start := time.Now()
-	defer utility.Cleanup()
-	defer func(start time.Time) {
-		log.WithFields(log.Fields{
-			"Duration": time.Since(start).String(),
-		}).Info("Completed")
-	}(start)
 
 	// cli flag vars
 	var (
@@ -37,9 +31,9 @@ func main() {
 		table         string
 		dest          string
 		pool          int
+		priority      cli.StringSlice
+		exclude       cli.StringSlice
 	)
-	// App vars
-	var cncy int
 
 	app := cli.NewApp()
 	app.Name = "skrape"
@@ -90,30 +84,51 @@ func main() {
 		},
 		cli.IntFlag{
 			Name:        "concurrency, C",
-			Usage:       "set the path where you wish to export the CSV files",
+			Usage:       "number of concurrent goroutines to be spawned (use with caution, this consumes resources)",
+			Value:       10,
 			Destination: &pool,
+		},
+		cli.StringSliceFlag{
+			Name:  "priority",
+			Usage: "declare larger tables as priority (will start these tables exporting first)",
+			Value: &priority,
+		},
+		cli.StringSliceFlag{
+			Name:  "exclude",
+			Usage: "exclude talbes from the export",
+			Value: &exclude,
 		},
 	}
 
-	if pool == 0 {
-		cncy = Concurrency
-	} else {
-		cncy = pool
-	}
-
 	app.Action = func(c *cli.Context) {
-		mysqlutils.VerifyMysqldump(mysqlDumpPath)
-		connect := export.NewConnection(host, user, port, database, dest, cncy)
-		export.MysqlDefaults()
-		if table != "" {
-			params := export.NewParameters(connect, export.NewTable(connect.Destination, table))
-			log.Info("Before channel")
-			chn := make(chan bool)
-			go params.Perform(chn)
-			chn <- true
-			log.Info("After channel")
+		var params skrape.Parameters
+		start := time.Now()
+		defer utility.Cleanup(skrape.DefaultFile)
+		defer func(start time.Time) { // Displays duration of run time
+			log.WithFields(log.Fields{
+				"Duration": time.Since(start).String(),
+			}).Info("Export Completed")
+		}(start)
+
+		mysqlutils.VerifyMysqldump(mysqlDumpPath) // make sure that mysqldump is installed
+		connect := skrape.NewConnection(host, user, port, database, dest, pool, nil)
+		if !connect.Missing() {
+			log.Error("Missing credentials for database connection")
+			os.Exit(1)
+		}
+		skrape.MysqlDefaults() // set up defaults file in /tmp to store credentials
+		if table != "" || len(priority) > 0 {
+			if len(priority) > 0 {
+				connect.TableLookUp(priority, exclude)
+			} else {
+				params = skrape.NewParameters(connect, skrape.NewTable(connect.Destination, table))
+				chn := make(chan string)
+				chn <- params.Table.Name
+				go params.Perform(chn)
+			}
 		} else {
-			connect.TableLookUp()
+			fmt.Print("bar")
+			connect.TableLookUp(priority, exclude)
 		}
 	}
 	app.Run(os.Args)

@@ -3,3 +3,4 @@ github.com/codegangsta/cli
 github.com/apex/log
 github.com/go-sql-driver/mysql
 golang.org/x/crypto/ssh/terminal
+github.com/MasteryConnect/strhsh
