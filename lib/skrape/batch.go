@@ -1,3 +1,8 @@
+// DEPRECATED
+// This entire file was an expirement to use multiple routines running mysqldump
+// targeting a single table through the --where flag with offsets.
+// It proved to be much slower than initially hoped for and has therefore
+// been abandoned all together.
 package skrape
 
 import (

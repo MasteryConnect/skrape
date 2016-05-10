@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -9,17 +8,19 @@ import (
 	"github.com/MasteryConnect/skrape/lib/skrape"
 	"github.com/MasteryConnect/skrape/lib/utility"
 	"github.com/apex/log"
-	"github.com/apex/log/handlers/text"
+	cliLog "github.com/apex/log/handlers/cli"
 	"github.com/codegangsta/cli"
 )
 
 const Concurrency = 10
 
 func init() {
-	log.SetHandler(text.New(os.Stderr))
 }
 
 func main() {
+	file, _ := os.OpenFile("log.txt", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0660)
+	defer file.Close()
+	log.SetHandler(cliLog.New(file))
 
 	// cli flag vars
 	var (
@@ -110,24 +111,20 @@ func main() {
 			}).Info("Export Completed")
 		}(start)
 
-		mysqlutils.VerifyMysqldump(mysqlDumpPath) // make sure that mysqldump is installed
-		connect := skrape.NewConnection(host, user, port, database, dest, pool, nil)
+		mysqlutils.VerifyMysqldump(mysqlDumpPath)                                    // make sure that mysqldump is installed
+		connect := skrape.NewConnection(host, user, port, database, dest, pool, nil) // new connection struct
 		if !connect.Missing() {
 			log.Error("Missing credentials for database connection")
 			os.Exit(1)
 		}
-		skrape.MysqlDefaults() // set up defaults file in /tmp to store credentials
-		if table != "" || len(priority) > 0 {
-			if len(priority) > 0 {
-				connect.TableLookUp(priority, exclude)
-			} else {
-				params = skrape.NewParameters(connect, skrape.NewTable(connect.Destination, table))
-				chn := make(chan string)
-				chn <- params.Table.Name
-				go params.Perform(chn)
-			}
+		skrape.MysqlDefaults() // set up defaults file in /tmp to store DB credentials
+
+		if table != "" {
+			params = skrape.NewParameters(connect, skrape.NewTable(connect.Destination, table))
+			chn := make(chan string)
+			chn <- params.Table.Name
+			go params.Perform(chn)
 		} else {
-			fmt.Print("bar")
 			connect.TableLookUp(priority, exclude)
 		}
 	}

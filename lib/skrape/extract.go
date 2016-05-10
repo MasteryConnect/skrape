@@ -66,7 +66,7 @@ func (p Parameters) Perform(chn chan string) { // Perform the export from MySQL 
 		var txt string
 		preambleLen := -1
 		recordStartMark := "VALUES ("
-		log.Warnf("Begin scanning for: %s", p.Table.Name)
+		log.Infof("Begin scanning for: %s", p.Table.Name)
 		for scanner.Scan() {
 			txt = scanner.Text()
 			if txt[0:1] == "--" { // skip any comments
@@ -88,6 +88,7 @@ func (p Parameters) Perform(chn chan string) { // Perform the export from MySQL 
 		close(p.Table.Data)
 	}()
 
+	// Start the mysqldump command
 	err := cmd.Start()
 	if err != nil {
 		_, file, line, _ := runtime.Caller(0)
@@ -97,6 +98,7 @@ func (p Parameters) Perform(chn chan string) { // Perform the export from MySQL 
 		}).Error(err.Error())
 	}
 
+	// Wait for mysqldump to complete
 	err = cmd.Wait()
 	if err != nil {
 		_, file, line, _ := runtime.Caller(0)

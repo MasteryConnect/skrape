@@ -32,7 +32,7 @@ func NewTable(path, name string) Table {
 		p = path
 	}
 	file, _ := os.Create(fmt.Sprintf("%s/%s.csv", p, name))
-	buf := bufio.NewWriterSize(file, BufferSize)
+	buf := bufio.NewWriter(file)
 	t := Table{}
 	t.Name = name
 	t.Data = make(chan string, 10000)
@@ -41,42 +41,21 @@ func NewTable(path, name string) Table {
 	return t
 }
 
-func (lo *LO) NewBatchTable(path, name string) Table {
-	var p string
-	var mutex sync.Mutex
-	mutex.Lock()
-	if path[len(path)-1:] == "/" { // store path without trailing slash for consistency
-		p = path[:len(path)-1]
-	} else {
-		p = path
-	}
-	file, _ := os.Create(fmt.Sprintf("%s/%s_%v.csv", p, name, lo.Iterator))
-	lo.Iterator++
-	buf := bufio.NewWriterSize(file, BufferSize)
-	t := Table{}
-	t.Name = name
-	t.Data = make(chan string)
-	t.File = file
-	t.Buffer = buf
-	mutex.Unlock()
-	return t
-}
-
 // Main writing function for each table.
 // this function is responsible for writing
 // the exported table to disk.
 func (table Table) Write(wg *sync.WaitGroup) {
-	defer func() { table.Buffer.Flush() }()
-	defer wg.Done()
+	defer func() { table.Buffer.Flush(); wg.Done() }()
 	for str := range table.Data {
 		table.Buffer.WriteString(str)
-		if table.Buffer.Available() <= BufferSize*.1 {
-			table.Buffer.Flush()
-		}
+		table.Buffer.Flush()
+		// if table.Buffer.Available() <= BufferSize*.1 {
+		// }
 	}
-	table.Buffer.Flush()
 }
 
+// For decreasing the memory foot print as
+// go routines complete their task
 func (table *Table) Reset() {
 	table.Buffer.Flush()
 	table.Buffer = nil
@@ -86,7 +65,42 @@ func (table *Table) Reset() {
 }
 
 func (c *Connection) TableLookUp(priority, exclude []string) { // grab all tables from the database
-	var tableNames []string
+	db := c.connect()
+	tableNames := c.readTables(db)
+
+	// if priority is flagged, move the tables to the front of the list
+	if len(priority) > 0 {
+		tableNames = utility.MoveToFrontOfSlice(priority, tableNames)
+	}
+	if len(exclude) > 0 {
+		tableNames = utility.SlcDelFrmSlc(exclude, tableNames)
+	}
+
+	log.Infof("LENGTH OF TABLES: %v\n", len(tableNames)) // debugging
+
+	chn := make(chan string, c.Concurrency)
+	f, _ := os.OpenFile("found_tables.csv", os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0660) // debugging
+	defer f.Close()
+
+	for _, name := range tableNames {
+		f.WriteString(name + "\n")
+		f.Sync()
+		table := NewTable(c.Destination, name)
+		params := NewParameters(c, table)
+		chn <- params.Table.Name
+		go params.Perform(chn)
+	}
+	log.Info("At this point all tables have been issued a request to export. Waiting for exports to finish") // debugging
+
+	for i := 0; i < cap(chn); i++ {
+		chn <- ""
+		log.Infof("Current Channel Capacity: %v\n", i)
+	}
+
+	log.Warn("Looped all tables, should be exiting") // debugging
+}
+
+func (c *Connection) connect() *sql.DB {
 
 	// retrieve password from default file
 	pwd := getPwd()
@@ -111,6 +125,11 @@ func (c *Connection) TableLookUp(priority, exclude []string) { // grab all table
 			"line": line,
 		}).Fatal(err.Error())
 	}
+	return db
+}
+
+func (c *Connection) readTables(db *sql.DB) []string {
+	var tableNames []string
 
 	// lookup tables on database
 	log.Info("Looking up tables")
@@ -143,34 +162,7 @@ func (c *Connection) TableLookUp(priority, exclude []string) { // grab all table
 			"line": line,
 		}).Fatal(err.Error())
 	}
-
-	// if priority is flagged, move the tables to the front of the list
-	if len(priority) > 0 {
-		tableNames = utility.MoveToFrontOfSlice(priority, tableNames)
-	}
-	if len(exclude) > 0 {
-		tableNames = utility.SlcDelFrmSlc(exclude, tableNames)
-	}
-
-	fmt.Printf("LENGTH OF TABLES: %v\n", len(tableNames))
-	chn := make(chan string, c.Concurrency)
-	f, _ := os.OpenFile("found_tables.csv", os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0660)
-	defer f.Close()
-
-	for _, name := range tableNames {
-		f.WriteString(name + "\n")
-		f.Sync()
-		table := NewTable(c.Destination, name)
-		params := NewParameters(c, table)
-		chn <- params.Table.Name
-		go params.Perform(chn)
-	}
-	fmt.Println("At this point all tables have been issued a request to export. Waiting for exports to finish")
-	for i := 0; i < cap(chn); i++ {
-		chn <- ""
-		log.Infof("Current Channel Capacity: %v\n", i)
-	}
-	log.Warn("Looped all tables, should be exiting")
+	return tableNames
 }
 
 // SUPPORTING FUNCTIONS
@@ -200,4 +192,27 @@ func getPwd() string {
 	}
 
 	return string(cnt[:i])
+}
+
+// DEPRECATED
+// This was for use in testing multiple mysqldump handlers pulling from the same table
+func (lo *LO) NewBatchTable(path, name string) Table {
+	var p string
+	var mutex sync.Mutex
+	mutex.Lock()
+	if path[len(path)-1:] == "/" { // store path without trailing slash for consistency
+		p = path[:len(path)-1]
+	} else {
+		p = path
+	}
+	file, _ := os.Create(fmt.Sprintf("%s/%s_%v.csv", p, name, lo.Iterator))
+	lo.Iterator++
+	buf := bufio.NewWriterSize(file, BufferSize)
+	t := Table{}
+	t.Name = name
+	t.Data = make(chan string)
+	t.File = file
+	t.Buffer = buf
+	mutex.Unlock()
+	return t
 }
