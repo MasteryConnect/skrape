@@ -15,11 +15,10 @@ const (
 	Limit       = 5000
 )
 
-type Parameters struct {
-	Connection *Connection
-	Table      Table
-	All        bool
-}
+// type Parameters struct {
+// 	Connection *Connection
+// 	Table      Table
+// }
 
 type Connection struct {
 	Host        string
@@ -28,10 +27,9 @@ type Connection struct {
 	Database    string
 	Destination string
 	Concurrency int
-	Priority    *Priority
 }
 
-func NewConnection(host, user, port, db, dest string, conc int, priority *Priority) (c *Connection) { // Will setup to default for exporting all tables
+func NewConnection(host, user, port, db, dest string, conc int) (c *Connection) { // Will setup to default for exporting all tables
 	c = &Connection{
 		Host:        host,
 		User:        user,
@@ -39,18 +37,17 @@ func NewConnection(host, user, port, db, dest string, conc int, priority *Priori
 		Database:    db,
 		Destination: dest,
 		Concurrency: conc,
-		Priority:    priority,
 	}
 	return
 }
 
-func NewParameters(c *Connection, table Table) (p Parameters) {
-	p = Parameters{
-		Connection: c,
-		Table:      table,
-	}
-	return
-}
+// func NewParameters(c *Connection, table Table) (p Parameters) {
+// 	p = Parameters{
+// 		Connection: c,
+// 		Table:      table,
+// 	}
+// 	return
+// }
 
 func (c *Connection) Missing() (a bool) {
 	if c.Host != "" && c.User != "" && c.Database != "" {
@@ -77,9 +74,7 @@ func (c *Connection) Setup() []string {
 	args = append(args, "--no-create-info")
 	args = append(args, "--quick")
 	args = append(args, "--single-transaction")
-	if c.Priority != nil {
-		args = append(args, fmt.Sprintf("--where=1 limit %v offset 0", c.Priority.BatchSize))
-	}
+	args = append(args, "--default-character-set=utf8")
 	args = append(args, c.Database)
 
 	return args

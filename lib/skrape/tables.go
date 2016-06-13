@@ -2,14 +2,20 @@ package skrape
 
 import (
 	"bufio"
+	"compress/gzip"
 	"database/sql"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/MasteryConnect/skrape/lib/utility"
 	"github.com/apex/log"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -18,22 +24,39 @@ const PwdByteLength = 1024
 var db *sql.DB
 
 type Table struct {
-	Name   string
-	File   *os.File
-	Buffer *bufio.Writer
-	Data   chan string
+	Name     string
+	Path     string
+	FileName string
+	File     *os.File
+	Buffer   *bufio.Writer
+	Data     chan string
 }
 
-func NewTable(path, name string) Table {
+type Schema struct {
+	Fields []Field
+}
+
+type Field struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Null bool   `json:"null"`
+}
+
+func NewTable(path, name string) *Table {
 	var p string
 	if path[len(path)-1:] == "/" { // store path without trailing slash for consistency
 		p = path[:len(path)-1]
 	} else {
 		p = path
 	}
-	file, _ := os.Create(fmt.Sprintf("%s/%s.csv", p, name))
-	buf := bufio.NewWriter(file)
-	t := Table{}
+	file, err := os.Create(fmt.Sprintf("%s/%s.csv", p, name))
+	if err != nil {
+		log.WithField("error", err.Error()).Fatal("Could not create file for exporting")
+	}
+	buf := bufio.NewWriterSize(file, BufferSize)
+	t := &Table{}
+	t.Path = p
+	t.FileName = name + ".csv"
 	t.Name = name
 	t.Data = make(chan string, 10000)
 	t.File = file
@@ -44,27 +67,69 @@ func NewTable(path, name string) Table {
 // Main writing function for each table.
 // this function is responsible for writing
 // the exported table to disk.
-func (table Table) Write(wg *sync.WaitGroup) {
-	defer func() { table.Buffer.Flush(); wg.Done() }()
-	for str := range table.Data {
-		table.Buffer.WriteString(str)
-		table.Buffer.Flush()
-		// if table.Buffer.Available() <= BufferSize*.1 {
-		// }
+func (t *Table) Write(wg *sync.WaitGroup) {
+	defer func() {
+		t.Buffer.Flush()
+		wg.Done()
+		log.Debug("Channel closed, table should be fully exported")
+	}()
+
+	for str := range t.Data {
+		t.Buffer.WriteString(str)
+		if t.Buffer.Available() <= BufferSize*.1 {
+			t.Buffer.Flush()
+		}
 	}
+}
+
+func (t *Table) Schema() {
+
+}
+
+func (t *Table) Upload() {
+	year := time.Now().Format("2006")
+	month := time.Now().Format("01")
+	day := time.Now().Format("02")
+	file, _ := os.Open(fmt.Sprintf("%s/%s", t.Path, t.FileName))
+	reader, writer := io.Pipe()
+	go func() {
+		gw := gzip.NewWriter(writer)
+		_, err := io.Copy(gw, file)
+		if err != nil {
+			log.WithField("error", err).Fatal("There was an error gzipping a file")
+		}
+		file.Close()
+		gw.Close()
+		writer.Close()
+	}()
+	uploader := s3manager.NewUploader(session.New(&aws.Config{Region: aws.String(os.Getenv("AWS_REGION"))}))
+	result, err := uploader.Upload(&s3manager.UploadInput{
+		Body:   reader,
+		Bucket: aws.String(os.Getenv("S3_BUCKET")),
+		Key:    aws.String(fmt.Sprintf("%s/%s/%s/%s/%s", os.Getenv("S3_KEY"), year, month, day, t.Name+".csv.gz")),
+	})
+	if err != nil {
+		log.WithField("error", err).Fatal("Failed to upload file.")
+	}
+	os.Remove(t.Path + "/" + t.FileName)
+	log.WithField("location", result.Location).Info("Successfully uploaded to")
 }
 
 // For decreasing the memory foot print as
 // go routines complete their task
-func (table *Table) Reset() {
-	table.Buffer.Flush()
-	table.Buffer = nil
-	table.File.Close()
-	table.File = nil
-	table.Data = nil
+func (t *Table) Reset() {
+	t.Buffer.Flush()
+	t.Buffer = nil
+	t.File = nil
+	t.Data = nil
 }
 
-func (c *Connection) TableLookUp(priority, exclude []string) { // grab all tables from the database
+func (t *Table) AddTable(a []string) (args []string) {
+	args = append(a, t.Name)
+	return
+}
+
+func (c *Connection) TableHandler(priority, exclude []string) { // grab all tables from the database
 	db := c.connect()
 	tableNames := c.readTables(db)
 
@@ -76,32 +141,22 @@ func (c *Connection) TableLookUp(priority, exclude []string) { // grab all table
 		tableNames = utility.SlcDelFrmSlc(exclude, tableNames)
 	}
 
-	log.Infof("LENGTH OF TABLES: %v\n", len(tableNames)) // debugging
-
-	chn := make(chan string, c.Concurrency)
-	f, _ := os.OpenFile("found_tables.csv", os.O_RDWR|os.O_TRUNC|os.O_CREATE, 0660) // debugging
-	defer f.Close()
-
+	semaphore := make(chan bool, c.Concurrency)
 	for _, name := range tableNames {
-		f.WriteString(name + "\n")
-		f.Sync()
-		table := NewTable(c.Destination, name)
-		params := NewParameters(c, table)
-		chn <- params.Table.Name
-		go params.Perform(chn)
+		semaphore <- true
+		go c.Perform(semaphore, name)
 	}
-	log.Info("At this point all tables have been issued a request to export. Waiting for exports to finish") // debugging
+	log.Debug("At this point all tables have been issued a request to export. Waiting for exports to finish") // debugging
 
-	for i := 0; i < cap(chn); i++ {
-		chn <- ""
-		log.Infof("Current Channel Capacity: %v\n", i)
+	for i := 0; i < cap(semaphore); i++ {
+		log.Debugf("Semaphore Capacity: %d", i)
+		semaphore <- true
 	}
 
-	log.Warn("Looped all tables, should be exiting") // debugging
+	log.Debug("Looped all tables, should be exiting") // debugging
 }
 
 func (c *Connection) connect() *sql.DB {
-
 	// retrieve password from default file
 	pwd := getPwd()
 	dsn := c.formatDsn(pwd)
@@ -192,27 +247,4 @@ func getPwd() string {
 	}
 
 	return string(cnt[:i])
-}
-
-// DEPRECATED
-// This was for use in testing multiple mysqldump handlers pulling from the same table
-func (lo *LO) NewBatchTable(path, name string) Table {
-	var p string
-	var mutex sync.Mutex
-	mutex.Lock()
-	if path[len(path)-1:] == "/" { // store path without trailing slash for consistency
-		p = path[:len(path)-1]
-	} else {
-		p = path
-	}
-	file, _ := os.Create(fmt.Sprintf("%s/%s_%v.csv", p, name, lo.Iterator))
-	lo.Iterator++
-	buf := bufio.NewWriterSize(file, BufferSize)
-	t := Table{}
-	t.Name = name
-	t.Data = make(chan string)
-	t.File = file
-	t.Buffer = buf
-	mutex.Unlock()
-	return t
 }

@@ -2,13 +2,14 @@ package main
 
 import (
 	"os"
+	// "sync"
 	"time"
 
 	"github.com/MasteryConnect/skrape/lib/mysqlutils"
 	"github.com/MasteryConnect/skrape/lib/skrape"
 	"github.com/MasteryConnect/skrape/lib/utility"
 	"github.com/apex/log"
-	cliLog "github.com/apex/log/handlers/cli"
+	"github.com/apex/log/handlers/text"
 	"github.com/codegangsta/cli"
 )
 
@@ -18,9 +19,11 @@ func init() {
 }
 
 func main() {
-	file, _ := os.OpenFile("log.txt", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0660)
+	file, _ := os.OpenFile("log.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0660)
 	defer file.Close()
-	log.SetHandler(cliLog.New(file))
+	l, _ := log.ParseLevel("DebugLevel")
+	log.SetLevel(l)
+	log.SetHandler(text.New(os.Stdout))
 
 	// cli flag vars
 	var (
@@ -96,13 +99,12 @@ func main() {
 		},
 		cli.StringSliceFlag{
 			Name:  "exclude",
-			Usage: "exclude talbes from the export",
+			Usage: "exclude tables from the export",
 			Value: &exclude,
 		},
 	}
 
-	app.Action = func(c *cli.Context) {
-		var params skrape.Parameters
+	app.Action = func(c *cli.Context) error {
 		start := time.Now()
 		defer utility.Cleanup(skrape.DefaultFile)
 		defer func(start time.Time) { // Displays duration of run time
@@ -111,8 +113,8 @@ func main() {
 			}).Info("Export Completed")
 		}(start)
 
-		mysqlutils.VerifyMysqldump(mysqlDumpPath)                                    // make sure that mysqldump is installed
-		connect := skrape.NewConnection(host, user, port, database, dest, pool, nil) // new connection struct
+		mysqlutils.VerifyMysqldump(mysqlDumpPath)                               // make sure that mysqldump is installed
+		connect := skrape.NewConnection(host, user, port, database, dest, pool) // new connection struct
 		if !connect.Missing() {
 			log.Error("Missing credentials for database connection")
 			os.Exit(1)
@@ -120,13 +122,16 @@ func main() {
 		skrape.MysqlDefaults() // set up defaults file in /tmp to store DB credentials
 
 		if table != "" {
-			params = skrape.NewParameters(connect, skrape.NewTable(connect.Destination, table))
-			chn := make(chan string)
-			chn <- params.Table.Name
-			go params.Perform(chn)
+			log.Infof("Performing single table extract for: %s", table)
+			chn := make(chan bool)
+
+			go connect.Perform(chn, table)
+			chn <- true
+
 		} else {
-			connect.TableLookUp(priority, exclude)
+			connect.TableHandler(priority, exclude)
 		}
+		return nil
 	}
 	app.Run(os.Args)
 }
