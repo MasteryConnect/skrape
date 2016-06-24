@@ -2,10 +2,10 @@ package main
 
 import (
 	"os"
-	// "sync"
 	"time"
 
 	"github.com/MasteryConnect/skrape/lib/mysqlutils"
+	"github.com/MasteryConnect/skrape/lib/setup"
 	"github.com/MasteryConnect/skrape/lib/skrape"
 	"github.com/MasteryConnect/skrape/lib/utility"
 	"github.com/apex/log"
@@ -21,8 +21,8 @@ func init() {
 func main() {
 	file, _ := os.OpenFile("log.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0660)
 	defer file.Close()
-	l, _ := log.ParseLevel("DebugLevel")
-	log.SetLevel(l)
+	//l, _ := log.ParseLevel("InfoLevel")
+	//log.SetLevel(l)
 	log.SetHandler(text.New(os.Stdout))
 
 	// cli flag vars
@@ -35,6 +35,7 @@ func main() {
 		table         string
 		dest          string
 		pool          int
+		matchTables   bool
 		priority      cli.StringSlice
 		exclude       cli.StringSlice
 	)
@@ -102,35 +103,42 @@ func main() {
 			Usage: "exclude tables from the export",
 			Value: &exclude,
 		},
+		cli.BoolFlag{
+			Name:        "match-table-count M",
+			Usage:       "set concurrency level to the number of tables being exported",
+			Destination: &matchTables,
+		},
 	}
 
 	app.Action = func(c *cli.Context) error {
 		start := time.Now()
-		defer utility.Cleanup(skrape.DefaultFile)
+		defer utility.Cleanup(setup.DefaultFile)
 		defer func(start time.Time) { // Displays duration of run time
 			log.WithFields(log.Fields{
 				"Duration": time.Since(start).String(),
 			}).Info("Export Completed")
 		}(start)
 
-		mysqlutils.VerifyMysqldump(mysqlDumpPath)                               // make sure that mysqldump is installed
-		connect := skrape.NewConnection(host, user, port, database, dest, pool) // new connection struct
+		mysqlutils.VerifyMysqldump(mysqlDumpPath)                                           // make sure that mysqldump is installed
+		connect := setup.NewConnection(host, user, port, database, dest, pool, matchTables) // new connection struct
+		extract := skrape.NewExtract(connect)
 		if !connect.Missing() {
 			log.Error("Missing credentials for database connection")
 			os.Exit(1)
 		}
-		skrape.MysqlDefaults() // set up defaults file in /tmp to store DB credentials
+		setup.MysqlDefaults() // set up defaults file in /tmp to store DB credentials
 
 		if table != "" {
 			log.Infof("Performing single table extract for: %s", table)
 			chn := make(chan bool)
 
-			go connect.Perform(chn, table)
+			go extract.Perform(chn, table)
 			chn <- true
 
 		} else {
-			connect.TableHandler(priority, exclude)
+			extract.TableHandler(priority, exclude)
 		}
+
 		return nil
 	}
 	app.Run(os.Args)

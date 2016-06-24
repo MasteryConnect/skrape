@@ -2,6 +2,7 @@ package skrape
 
 import (
 	"bufio"
+	"database/sql"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	utils "github.com/MasteryConnect/skrape/lib/mysqlutils"
+	"github.com/MasteryConnect/skrape/lib/setup"
+	"github.com/MasteryConnect/skrape/lib/skrape/skrapes3"
 	"github.com/apex/log"
 )
 
@@ -17,9 +20,17 @@ const (
 	BufferSize = 209715200 // 200MB in bytes
 )
 
-func (c *Connection) Perform(semaphore chan bool, name string) { // Perform the export from MySQL RDBMS to CSV files
+type Extract struct {
+	Connection *setup.Connection
+}
+
+func NewExtract(c *setup.Connection) *Extract {
+	return &Extract{c}
+}
+
+func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the export from MySQL RDBMS to CSV files
 	elapsed := time.Now()
-	table := NewTable(c.Destination, name)
+	table := NewTable(e.Destination(), name)
 	log.Debug("Inside Perform Function")
 
 	defer func() {
@@ -31,7 +42,7 @@ func (c *Connection) Perform(semaphore chan bool, name string) { // Perform the 
 		log.WithField("TableName", name).Debug("Read off the channel, opened up a spot for a new routine")
 	}() // read off the semiphore channel to allow a new goroutine to start
 
-	args := c.Setup()
+	args := e.Setup()
 	args = table.AddTable(args)
 	app := utils.GetBinary() // mysqldump binary
 	cmd := exec.Command(app, args...)
@@ -135,7 +146,29 @@ func (c *Connection) Perform(semaphore chan bool, name string) { // Perform the 
 		}).Error(err.Error())
 	}
 	log.WithField("TableName", name).Info("Uploading file")
-	table.Upload()
-	table.Schema()
-	log.WithField("TableName", name).Info("Completed uploading file")
+	skrapes3.Gzipload(table.Name, table.Path)
+	e.Schema(table)
+}
+
+// Abstraction functions for disconnecting
+// Connection from the skrape package
+// TODO create interfaces for Connection
+func (e *Extract) Connect() *sql.DB {
+	return e.Connection.Connect()
+}
+
+func (e *Extract) Destination() string {
+	return e.Connection.Destination
+}
+
+func (e *Extract) Setup() []string {
+	return e.Connection.Setup()
+}
+
+func (e *Extract) Concurrency() int {
+	return e.Connection.Concurrency
+}
+
+func (e *Extract) Database() string {
+	return e.Connection.Database
 }
