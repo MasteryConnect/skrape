@@ -26,9 +26,10 @@ type Connection struct {
 	Destination string
 	Concurrency int
 	Match       bool
+	Pwd         bool
 }
 
-func NewConnection(host, user, port, db, dest string, conc int, match bool) (c *Connection) { // Will setup to default for exporting all tables
+func NewConnection(host, user, port, db, dest string, conc int, match, pwd bool) (c *Connection) { // Will setup to default for exporting all tables
 	c = &Connection{
 		Host:        host,
 		User:        user,
@@ -37,6 +38,7 @@ func NewConnection(host, user, port, db, dest string, conc int, match bool) (c *
 		Destination: dest,
 		Concurrency: conc,
 		Match:       match,
+		Pwd:         pwd,
 	}
 	return
 }
@@ -80,7 +82,7 @@ func (c *Connection) Missing() (a bool) {
 func (c *Connection) Setup() []string {
 	if _, err := os.Stat(DefaultFile); err != nil {
 		log.Info("defaults file is missing")
-		MysqlDefaults()
+		MysqlDefaults(c.Pwd)
 	}
 	var args []string
 	args = append(args, fmt.Sprintf("--defaults-file=%s", DefaultFile))
@@ -106,12 +108,18 @@ func (c *Connection) Setup() []string {
 // stored into a tempfile without being
 // displayed on the screen. Will restore
 // stdout after the password is read.
-func MysqlDefaults() string {
-	fmt.Print("Enter Password: ")
-	bytePwd, err := terminal.ReadPassword(syscall.Stdin)
-	fmt.Println("")
-	if err != nil {
-		log.Fatal(err.Error())
+func MysqlDefaults(req bool) string {
+	var pass string
+	if req == true {
+		fmt.Print("Enter Password: ")
+		bytePwd, err := terminal.ReadPassword(syscall.Stdin)
+		pass = string(bytePwd)
+		fmt.Println("")
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+	} else {
+		pass = os.Getenv("SKRAPE_PWD")
 	}
 	file, err := os.Create(DefaultFile)
 	if err != nil {
@@ -120,7 +128,7 @@ func MysqlDefaults() string {
 	defer file.Close()
 
 	w := bufio.NewWriter(file)
-	_, err = w.WriteString(fmt.Sprintf("[client]\npassword=%s", string(bytePwd)))
+	_, err = w.WriteString(fmt.Sprintf("[client]\npassword=%s", pass))
 	if err != nil {
 		log.Fatal(err.Error())
 	}

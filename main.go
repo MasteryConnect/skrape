@@ -36,6 +36,7 @@ func main() {
 		dest          string
 		pool          int
 		matchTables   bool
+		skrapePwd     bool
 		priority      cli.StringSlice
 		exclude       cli.StringSlice
 	)
@@ -108,6 +109,12 @@ func main() {
 			Usage:       "set concurrency level to the number of tables being exported",
 			Destination: &matchTables,
 		},
+		cli.BoolFlag{
+			Name:        "no-pass",
+			Usage:       "do not prompt for password",
+			Destination: &skrapePwd,
+			EnvVar:      "SKRAPE_PWD",
+		},
 	}
 
 	app.Action = func(c *cli.Context) error {
@@ -119,14 +126,14 @@ func main() {
 			}).Info("Export Completed")
 		}(start)
 
-		mysqlutils.VerifyMysqldump(mysqlDumpPath)                                           // make sure that mysqldump is installed
-		connect := setup.NewConnection(host, user, port, database, dest, pool, matchTables) // new connection struct
+		mysqlutils.VerifyMysqldump(mysqlDumpPath)                                                      // make sure that mysqldump is installed
+		connect := setup.NewConnection(host, user, port, database, dest, pool, matchTables, skrapePwd) // new connection struct
 		extract := skrape.NewExtract(connect)
 		if !connect.Missing() {
 			log.Error("Missing credentials for database connection")
 			os.Exit(1)
 		}
-		setup.MysqlDefaults() // set up defaults file in /tmp to store DB credentials
+		setup.MysqlDefaults(skrapePwd) // set up defaults file in /tmp to store DB credentials
 
 		if table != "" {
 			log.Infof("Performing single table extract for: %s", table)
