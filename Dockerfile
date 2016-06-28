@@ -1,5 +1,5 @@
 # IMAGE docker.mstry.io/etl/skrape
-FROM golang:1.6.2-alpine
+FROM alpine:3.4
 MAINTAINER Adam Haymond
 
 WORKDIR /src
