@@ -95,6 +95,7 @@ func (c *Connection) Setup() []string {
 	args = append(args, "--compact")
 	args = append(args, "--no-create-db")
 	args = append(args, "--no-create-info")
+	args = append(args, "--skip-triggers")
 	args = append(args, "--quick")
 	args = append(args, "--single-transaction")
 	args = append(args, "--default-character-set=utf8")
@@ -110,7 +111,7 @@ func (c *Connection) Setup() []string {
 // stdout after the password is read.
 func MysqlDefaults(req bool) string {
 	var pass string
-	if req == true {
+	if req != true {
 		fmt.Print("Enter Password: ")
 		bytePwd, err := terminal.ReadPassword(syscall.Stdin)
 		pass = string(bytePwd)

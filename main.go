@@ -19,10 +19,6 @@ func init() {
 }
 
 func main() {
-	file, _ := os.OpenFile("log.txt", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0660)
-	defer file.Close()
-	//l, _ := log.ParseLevel("InfoLevel")
-	//log.SetLevel(l)
 	log.SetHandler(text.New(os.Stdout))
 
 	// cli flag vars
@@ -47,31 +43,31 @@ func main() {
 	app.Version = "1.0"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name:        "username, u",
+			Name:        "u, username",
 			Usage:       "username for mysql server",
 			Value:       "root",
 			Destination: &user,
 		},
 		cli.StringFlag{
-			Name:        "port, P",
+			Name:        "P, port",
 			Usage:       "host name for mysql server",
 			Value:       "3306",
 			Destination: &port,
 		},
 		cli.StringFlag{
-			Name:        "hostname, H",
+			Name:        "H, hostname",
 			Usage:       "host name for mysql server",
 			Value:       "127.0.0.1",
 			Destination: &host,
 		},
 		cli.StringFlag{
-			Name:        "database, D",
+			Name:        "D, database",
 			Usage:       "targeted database",
 			Value:       "",
 			Destination: &database,
 		},
 		cli.StringFlag{
-			Name:        "table, t",
+			Name:        "t, table",
 			Usage:       "name of the table to be exported",
 			Value:       "",
 			Destination: &table,
@@ -83,13 +79,13 @@ func main() {
 			Destination: &mysqlDumpPath,
 		},
 		cli.StringFlag{
-			Name:        "export-path, e",
+			Name:        "e, export-path",
 			Usage:       "set the path where you wish to export the CSV files",
 			Value:       "./",
 			Destination: &dest,
 		},
 		cli.IntFlag{
-			Name:        "concurrency, C",
+			Name:        "C, concurrency",
 			Usage:       "number of concurrent goroutines to be spawned (use with caution, this consumes resources)",
 			Value:       10,
 			Destination: &pool,
@@ -105,13 +101,13 @@ func main() {
 			Value: &exclude,
 		},
 		cli.BoolFlag{
-			Name:        "match-table-count M",
+			Name:        "M, match-table-count",
 			Usage:       "set concurrency level to the number of tables being exported",
 			Destination: &matchTables,
 		},
 		cli.BoolFlag{
-			Name:        "no-pass",
-			Usage:       "do not prompt for password",
+			Name:        "p, skip-pass",
+			Usage:       "do not prompt for password, instead use the env var",
 			Destination: &skrapePwd,
 			EnvVar:      "SKRAPE_PWD",
 		},

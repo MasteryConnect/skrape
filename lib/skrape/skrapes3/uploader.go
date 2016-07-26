@@ -51,7 +51,10 @@ func Gzipload(name, path string) {
 	if err != nil {
 		log.WithField("error", err).Fatal("Failed to upload file.")
 	}
-	os.Remove(path + "/" + name)
+	err = os.Remove(path + "/" + name + ".csv")
+	if err != nil {
+		log.WithField("error", err).Warn("A csv file was not removed!")
+	}
 	log.WithField("location", result.Location).Info("Successfully uploaded to")
 }
 
