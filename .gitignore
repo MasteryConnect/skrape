@@ -28,3 +28,6 @@ out.txt
 .envrc
 
 mysql-cnf.cnf
+
+.vendor
+*.csv
