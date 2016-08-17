@@ -31,3 +31,4 @@ mysql-cnf.cnf
 
 .vendor
 *.csv
+.aws*

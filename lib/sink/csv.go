@@ -1,16 +1,15 @@
-package csv
+package sink
 
 import (
 	"bufio"
 	"fmt"
 	"os"
 
-	"github.com/MasteryConnect/skrape/lib/sink"
 	"github.com/apex/log"
 )
 
 type CsvSink struct {
-	*sink.SinkCore
+	*SinkCore
 
 	Path     string
 	FileName string
@@ -27,9 +26,13 @@ func NewCsvSink(path, name string, bufferSize int) *CsvSink {
 		Path:     path,
 		FileName: name + ".csv",
 		File:     file,
-		SinkCore: sink.NewSinkCore(buf),
+		SinkCore: NewSinkCore(buf, name, bufferSize),
 	}
 	return cs
+}
+
+func (s *CsvSink) ReadFinished() {
+	// Nothing to do
 }
 
 func (s *CsvSink) Close() {

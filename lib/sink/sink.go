@@ -8,22 +8,25 @@ import (
 
 type Sink interface {
 	Write(*sync.WaitGroup)
+	ReadFinished()
 	Close()
 	Data(string)
 	EndOfData()
 }
 
 type SinkCore struct {
-	Destination string
-	Buffer      *bufio.Writer
-	DataChan    chan string
-	BufferSize  int
+	Buffer     *bufio.Writer
+	DataChan   chan string
+	BufferSize int
+	Name       string
 }
 
-func NewSinkCore(buf *bufio.Writer) *SinkCore {
+func NewSinkCore(buf *bufio.Writer, name string, bufferSize int) *SinkCore {
 	return &SinkCore{
-		Buffer:   buf,
-		DataChan: make(chan string, 10000),
+		Buffer:     buf,
+		DataChan:   make(chan string, 10000),
+		Name:       name,
+		BufferSize: bufferSize,
 	}
 }
 

@@ -12,9 +12,7 @@ import (
 
 	utils "github.com/MasteryConnect/skrape/lib/mysqlutils"
 	"github.com/MasteryConnect/skrape/lib/setup"
-	"github.com/MasteryConnect/skrape/lib/sink"
-	"github.com/MasteryConnect/skrape/lib/sink/csv"
-	"github.com/MasteryConnect/skrape/lib/skrape/skrapes3"
+	sinks "github.com/MasteryConnect/skrape/lib/sink"
 	"github.com/apex/log"
 )
 
@@ -36,8 +34,15 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 	// Source
 	table := NewTable(e.Destination(), name)
 	// Sink
-	var sink sink.Sink
-	sink = csv.NewCsvSink(e.Destination(), name, BufferSize)
+	var sink sinks.Sink
+	switch e.SinkType {
+	case "csv":
+		sink = sinks.NewCsvSink(e.Destination(), name, BufferSize)
+	case "s3":
+		sink = sinks.NewS3Sink(e.Destination(), name, BufferSize, e.Connection)
+	default:
+		sink = sinks.NewS3Sink(e.Destination(), name, BufferSize, e.Connection)
+	}
 	log.Debug("Inside Perform Function")
 
 	defer func() {
@@ -142,7 +147,6 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 	wait.Wait()
 
 	err = cmd.Wait()
-	sink.Close()
 	log.Debugf("mysqldump %s", cmd.ProcessState.String())
 	log.Debugf("mysqldump completed for %s", name)
 	if err != nil {
@@ -152,9 +156,8 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 			"line": line,
 		}).Error(err.Error())
 	}
-	log.WithField("TableName", name).Info("Uploading file")
-	skrapes3.Gzipload(table.Name, table.Path)
-	e.Schema(table)
+	sink.ReadFinished()
+	sink.Close()
 }
 
 // Abstraction functions for disconnecting
