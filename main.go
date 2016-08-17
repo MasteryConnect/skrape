@@ -15,32 +15,33 @@ import (
 
 const Concurrency = 10
 
+// cli flag vars
+var (
+	mysqlDumpPath string
+	host          string
+	port          string
+	user          string
+	database      string
+	table         string
+	dest          string
+	pool          int
+	matchTables   bool
+	skrapePwd     bool
+	priority      cli.StringSlice
+	exclude       cli.StringSlice
+)
+
 func init() {
 }
 
 func main() {
 	log.SetHandler(text.New(os.Stdout))
 
-	// cli flag vars
-	var (
-		mysqlDumpPath string
-		host          string
-		port          string
-		user          string
-		database      string
-		table         string
-		dest          string
-		pool          int
-		matchTables   bool
-		skrapePwd     bool
-		priority      cli.StringSlice
-		exclude       cli.StringSlice
-	)
-
 	app := cli.NewApp()
 	app.Name = "skrape"
-	app.Usage = "export MySQL RDBMS tables to csv files"
+	app.Usage = "export MySQL RDBMS tables"
 	app.Version = "1.0"
+	// Global flags used by every command
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:        "u, username",
@@ -112,37 +113,68 @@ func main() {
 			EnvVar:      "SKRAPE_PWD",
 		},
 	}
-
+	// Commands available. Defaults to s3 if no command given
+	app.Commands = []cli.Command{
+		{
+			Name:    "s3",
+			Aliases: []string{"s"},
+			Usage:   "export to csv files that are uploaded to s3",
+			Action: func(c *cli.Context) error {
+				return action(c, "s3")
+			},
+		},
+		{
+			Name:    "csv",
+			Aliases: []string{"c"},
+			Usage:   "export to csv files",
+			Action: func(c *cli.Context) error {
+				return action(c, "csv")
+			},
+		},
+		{
+			Name:    "kinesis",
+			Aliases: []string{"k"},
+			Usage:   "export to an AWS Kinesis stream",
+			Action: func(c *cli.Context) error {
+				return action(c, "kinesis")
+			},
+		},
+	}
+	// Default action if no command specified
 	app.Action = func(c *cli.Context) error {
-		start := time.Now()
-		defer utility.Cleanup(setup.DefaultFile)
-		defer func(start time.Time) { // Displays duration of run time
-			log.WithFields(log.Fields{
-				"Duration": time.Since(start).String(),
-			}).Info("Export Completed")
-		}(start)
-
-		mysqlutils.VerifyMysqldump(mysqlDumpPath)                                                      // make sure that mysqldump is installed
-		connect := setup.NewConnection(host, user, port, database, dest, pool, matchTables, skrapePwd) // new connection struct
-		extract := skrape.NewExtract(connect)
-		if !connect.Missing() {
-			log.Error("Missing credentials for database connection")
-			os.Exit(1)
-		}
-		setup.MysqlDefaults(skrapePwd) // set up defaults file in /tmp to store DB credentials
-
-		if table != "" {
-			log.Infof("Performing single table extract for: %s", table)
-			chn := make(chan bool)
-
-			go extract.Perform(chn, table)
-			chn <- true
-
-		} else {
-			extract.TableHandler(priority, exclude)
-		}
-
-		return nil
+		return action(c, "s3")
 	}
 	app.Run(os.Args)
+}
+
+func action(c *cli.Context, sinkType string) error {
+	start := time.Now()
+	defer utility.Cleanup(setup.DefaultFile)
+	defer func(start time.Time) { // Displays duration of run time
+		log.WithFields(log.Fields{
+			"Duration": time.Since(start).String(),
+		}).Info("Export Completed")
+	}(start)
+
+	mysqlutils.VerifyMysqldump(mysqlDumpPath)                                                      // make sure that mysqldump is installed
+	connect := setup.NewConnection(host, user, port, database, dest, pool, matchTables, skrapePwd) // new connection struct
+	extract := skrape.NewExtract(sinkType, connect)
+	if !connect.Missing() {
+		log.Error("Missing credentials for database connection")
+		os.Exit(1)
+	}
+	setup.MysqlDefaults(skrapePwd) // set up defaults file in /tmp to store DB credentials
+
+	if table != "" {
+		log.Infof("Performing single table extract for: %s", table)
+		chn := make(chan bool)
+
+		go extract.Perform(chn, table)
+		chn <- true
+
+	} else {
+		extract.TableHandler(priority, exclude)
+	}
+
+	return nil
 }

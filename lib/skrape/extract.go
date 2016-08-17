@@ -12,6 +12,8 @@ import (
 
 	utils "github.com/MasteryConnect/skrape/lib/mysqlutils"
 	"github.com/MasteryConnect/skrape/lib/setup"
+	"github.com/MasteryConnect/skrape/lib/sink"
+	"github.com/MasteryConnect/skrape/lib/sink/csv"
 	"github.com/MasteryConnect/skrape/lib/skrape/skrapes3"
 	"github.com/apex/log"
 )
@@ -21,16 +23,21 @@ const (
 )
 
 type Extract struct {
+	SinkType   string
 	Connection *setup.Connection
 }
 
-func NewExtract(c *setup.Connection) *Extract {
-	return &Extract{c}
+func NewExtract(sinkType string, c *setup.Connection) *Extract {
+	return &Extract{sinkType, c}
 }
 
 func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the export from MySQL RDBMS to CSV files
 	elapsed := time.Now()
+	// Source
 	table := NewTable(e.Destination(), name)
+	// Sink
+	var sink sink.Sink
+	sink = csv.NewCsvSink(e.Destination(), name, BufferSize)
 	log.Debug("Inside Perform Function")
 
 	defer func() {
@@ -69,7 +76,7 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 	// Here we start the writer and set it up to wait for the channel to receive
 	// data from the reader below
 	wait.Add(1)
-	go table.Write(&wait)
+	go sink.Write(&wait)
 
 	// This will increase the buffer size for bufio.Scanner to allow for
 	// token sizes (lines) up to 1MB in size.
@@ -100,8 +107,8 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 			}
 
 			if len(txt) > preambleLen {
-				parsed := txt[preambleLen : len(txt)-2]   // Drop off ); at end of line
-				table.Data <- fmt.Sprintf("%s\n", parsed) // add parsed line to the channel
+				parsed := txt[preambleLen : len(txt)-2] // Drop off ); at end of line
+				sink.Data(fmt.Sprintf("%s\n", parsed))  // add parsed line to the channel
 			} else { // log out bad value strings and continue
 				log.Debug("BAD JOO JOO found in extraction")
 				log.Warn(fmt.Sprintf("%s\n", txt))
@@ -111,7 +118,7 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 		if scanner.Err() != nil {
 			log.WithError(scanner.Err()).Fatal("There was an error while reading the mysqldump output")
 		}
-		close(table.Data) // closes the channel once the read opertaion is completed
+		sink.EndOfData() // closes the channel once the read operation is completed
 		log.WithField("TableName", name).Debug("Just closed the table data channel")
 	}()
 
@@ -135,7 +142,7 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 	wait.Wait()
 
 	err = cmd.Wait()
-	table.File.Close()
+	sink.Close()
 	log.Debugf("mysqldump %s", cmd.ProcessState.String())
 	log.Debugf("mysqldump completed for %s", name)
 	if err != nil {
@@ -158,7 +165,14 @@ func (e *Extract) Connect() *sql.DB {
 }
 
 func (e *Extract) Destination() string {
-	return e.Connection.Destination
+	path := e.Connection.Destination
+	var p string
+	if path[len(path)-1:] == "/" { // store path without trailing slash for consistency
+		p = path[:len(path)-1]
+	} else {
+		p = path
+	}
+	return p
 }
 
 func (e *Extract) Setup() []string {

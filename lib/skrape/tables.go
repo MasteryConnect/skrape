@@ -1,12 +1,10 @@
 package skrape
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
 	"runtime"
-	"sync"
 
 	"github.com/MasteryConnect/skrape/lib/skrape/skrapes3"
 	"github.com/MasteryConnect/skrape/lib/utility"
@@ -15,12 +13,8 @@ import (
 )
 
 type Table struct {
-	Name     string
-	Path     string
-	FileName string
-	File     *os.File
-	Buffer   *bufio.Writer
-	Data     chan string
+	Name string
+	Path string
 }
 
 type Schema struct {
@@ -38,43 +32,10 @@ type Field struct {
 }
 
 func NewTable(path, name string) *Table {
-	var p string
-	if path[len(path)-1:] == "/" { // store path without trailing slash for consistency
-		p = path[:len(path)-1]
-	} else {
-		p = path
-	}
-	file, err := os.Create(fmt.Sprintf("%s/%s.csv", p, name))
-	if err != nil {
-		log.WithField("error", err.Error()).Fatal("Could not create file for exporting")
-	}
-	buf := bufio.NewWriterSize(file, BufferSize)
 	t := &Table{}
-	t.Path = p
-	t.FileName = name + ".csv"
+	t.Path = path
 	t.Name = name
-	t.Data = make(chan string, 10000)
-	t.File = file
-	t.Buffer = buf
 	return t
-}
-
-// Main writing function for each table.
-// this function is responsible for writing
-// the exported table to disk.
-func (t *Table) Write(wg *sync.WaitGroup) {
-	defer func() {
-		t.Buffer.Flush()
-		wg.Done()
-		log.Debug("Channel closed, table should be fully exported")
-	}()
-
-	for str := range t.Data {
-		t.Buffer.WriteString(str)
-		if t.Buffer.Available() <= BufferSize*.1 {
-			t.Buffer.Flush()
-		}
-	}
 }
 
 // Export a table schema to S3
@@ -119,15 +80,6 @@ func (e *Extract) Schema(t *Table) {
 	skrapes3.S3Upload(pathsfile, os.Getenv("S3_BUCKET"), fmt.Sprintf("%s/%s/paths/%s", os.Getenv("S3_KEY"), skrapes3.S3DateKey(), pathsname))
 	os.Remove(t.Path + "/" + pathsname)
 	log.Info("JSONPaths file uploaded for: " + t.Name)
-}
-
-// For decreasing the memory foot print as
-// go routines complete their task
-func (t *Table) Reset() {
-	t.Buffer.Flush()
-	t.Buffer = nil
-	t.File = nil
-	t.Data = nil
 }
 
 // Add the database table to the argument list for Mysqldump
