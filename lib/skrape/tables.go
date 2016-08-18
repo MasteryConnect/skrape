@@ -14,20 +14,6 @@ type Table struct {
 	Path string
 }
 
-type Schema struct {
-	Fields []Field `json:"fields"`
-}
-
-type Paths struct {
-	JsonPaths []string `json:"jsonpaths"`
-}
-
-type Field struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-	Null string `json:"null"`
-}
-
 func NewTable(path, name string) *Table {
 	t := &Table{}
 	t.Path = path
@@ -115,7 +101,7 @@ func (e *Extract) ReadTables() []string {
 }
 
 func (e *Extract) UpdateConcurrency(c int) {
-	if e.Connection.Match == true {
-		e.Connection.Concurrency = c
+	if e.Cfg.GetConn().Match == true {
+		e.Cfg.GetConn().Concurrency = c
 	}
 }

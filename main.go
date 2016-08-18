@@ -4,11 +4,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/MasteryConnect/skrape/lib/config"
 	"github.com/MasteryConnect/skrape/lib/mysqlutils"
 	"github.com/MasteryConnect/skrape/lib/setup"
 	"github.com/MasteryConnect/skrape/lib/skrape"
 	"github.com/MasteryConnect/skrape/lib/utility"
 	"github.com/apex/log"
+	"github.com/apex/log/handlers/level"
 	"github.com/apex/log/handlers/text"
 	"github.com/codegangsta/cli"
 )
@@ -17,25 +19,27 @@ const Concurrency = 10
 
 // cli flag vars
 var (
-	mysqlDumpPath string
-	host          string
-	port          string
-	user          string
-	database      string
-	table         string
-	dest          string
-	pool          int
-	matchTables   bool
-	skrapePwd     bool
-	priority      cli.StringSlice
-	exclude       cli.StringSlice
+	mysqlDumpPath         string
+	host                  string
+	port                  string
+	user                  string
+	database              string
+	table                 string
+	dest                  string
+	pool                  int
+	matchTables           bool
+	skrapePwd             bool
+	priority              cli.StringSlice
+	exclude               cli.StringSlice
+	kinesisStreamName     string
+	kinesisStreamEndpoint string
 )
 
 func init() {
 }
 
 func main() {
-	log.SetHandler(text.New(os.Stdout))
+	log.SetHandler(level.New(text.New(os.Stdout), log.DebugLevel))
 
 	app := cli.NewApp()
 	app.Name = "skrape"
@@ -135,6 +139,18 @@ func main() {
 			Name:    "kinesis",
 			Aliases: []string{"k"},
 			Usage:   "export to an AWS Kinesis stream",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:        "s, stream-name",
+					Usage:       "Kinesis stream name. If the stream name includes the string {TABLE_NAME}, it will be replaced by the table name, allowing for 1 stream per table",
+					Destination: &kinesisStreamName,
+				},
+				cli.StringFlag{
+					Name:        "e, stream-endpoint",
+					Usage:       "Kinesis stream URL endpoint",
+					Destination: &kinesisStreamEndpoint,
+				},
+			},
 			Action: func(c *cli.Context) error {
 				return action(c, "kinesis")
 			},
@@ -158,7 +174,7 @@ func action(c *cli.Context, sinkType string) error {
 
 	mysqlutils.VerifyMysqldump(mysqlDumpPath)                                                      // make sure that mysqldump is installed
 	connect := setup.NewConnection(host, user, port, database, dest, pool, matchTables, skrapePwd) // new connection struct
-	extract := skrape.NewExtract(sinkType, connect)
+	extract := skrape.NewExtract(sinkType, config.NewConfig(connect, kinesisStreamEndpoint, kinesisStreamName))
 	if !connect.Missing() {
 		log.Error("Missing credentials for database connection")
 		os.Exit(1)

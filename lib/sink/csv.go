@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/apex/log"
 )
@@ -11,6 +12,7 @@ import (
 type CsvSink struct {
 	*SinkCore
 
+	Buffer   *bufio.Writer
 	Path     string
 	FileName string
 	File     *os.File
@@ -24,18 +26,35 @@ func NewCsvSink(path, name string, bufferSize int) *CsvSink {
 	buf := bufio.NewWriterSize(file, bufferSize)
 	cs := &CsvSink{
 		Path:     path,
+		Buffer:   buf,
 		FileName: name + ".csv",
 		File:     file,
-		SinkCore: NewSinkCore(buf, name, bufferSize),
+		SinkCore: NewSinkCore(name, bufferSize),
 	}
 	return cs
 }
 
-func (s *CsvSink) ReadFinished() {
-	// Nothing to do
+// Main writing function for each table.
+// this function is responsible for writing
+// the exported table to disk.
+func (s *CsvSink) Write(wg *sync.WaitGroup) {
+	defer func() {
+		s.Buffer.Flush()
+		wg.Done()
+		log.Debug("Channel closed, table should be fully exported")
+	}()
+
+	for str := range s.DataChan {
+		s.Buffer.WriteString(fmt.Sprintf("%s\n", str))
+		if s.Buffer.Available() <= s.BufferSize/10 {
+			s.Buffer.Flush()
+		}
+	}
 }
 
 func (s *CsvSink) Close() {
 	s.SinkCore.Close()
+	s.Buffer.Flush()
+	s.Buffer = nil
 	s.File.Close()
 }

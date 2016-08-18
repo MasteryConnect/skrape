@@ -5,34 +5,21 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/MasteryConnect/skrape/lib/setup"
+	"github.com/MasteryConnect/skrape/lib/config"
+	"github.com/MasteryConnect/skrape/lib/mysqlutils"
 	"github.com/MasteryConnect/skrape/lib/skrape/skrapes3"
 	"github.com/apex/log"
 )
 
 type S3Sink struct {
 	*CsvSink
-	Connection *setup.Connection
+	Cfg config.Config
 }
 
-type Schema struct {
-	Fields []Field `json:"fields"`
-}
-
-type Paths struct {
-	JsonPaths []string `json:"jsonpaths"`
-}
-
-type Field struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-	Null string `json:"null"`
-}
-
-func NewS3Sink(path, name string, bufferSize int, conn *setup.Connection) *S3Sink {
+func NewS3Sink(path, name string, bufferSize int, cfg config.Config) *S3Sink {
 	cs := &S3Sink{
-		Connection: conn,
-		CsvSink:    NewCsvSink(path, name, bufferSize),
+		Cfg:     cfg,
+		CsvSink: NewCsvSink(path, name, bufferSize),
 	}
 	return cs
 }
@@ -48,34 +35,20 @@ func (s *S3Sink) ReadFinished() {
 }
 
 func (s *S3Sink) Close() {
+	s.CsvSink.Close()
 }
 
 // Export a table schema to S3
 func (s *S3Sink) Schema() {
-	db := s.Connection.Connect()
-	schema := Schema{[]Field{}}
-	paths := Paths{[]string{}}
+	schema, paths := mysqlutils.TableSchema(s.Cfg.GetConn(), s.Name)
+
 	schemaname := s.Name + ".json"
 	pathsname := s.Name + "paths.json"
 	schemafile, _ := os.Create(s.Path + "/" + schemaname)
 	pathsfile, _ := os.Create(s.Path + "/" + pathsname)
 
-	defer db.Close()
 	defer schemafile.Close()
 	defer pathsfile.Close()
-
-	query := fmt.Sprintf("select COLUMN_NAME as `Field`, COLUMN_TYPE as `Type`, IS_NULLABLE AS `Null` from information_schema.COLUMNS WHERE TABLE_NAME = '%s'", s.Name)
-
-	rows, err := db.Query(query)
-	if err != nil {
-		log.WithField("error", err).Fatal("there was an error extracting the schema for:" + s.Name)
-	}
-	for rows.Next() {
-		var f Field
-		rows.Scan(&f.Name, &f.Type, &f.Null)
-		paths.JsonPaths = append(paths.JsonPaths, fmt.Sprintf("$['%s']", f.Name))
-		schema.Fields = append(schema.Fields, f)
-	}
 
 	encoder := json.NewEncoder(schemafile)
 	encoder.Encode(schema)

@@ -10,22 +10,23 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MasteryConnect/skrape/lib/config"
 	utils "github.com/MasteryConnect/skrape/lib/mysqlutils"
-	"github.com/MasteryConnect/skrape/lib/setup"
 	sinks "github.com/MasteryConnect/skrape/lib/sink"
 	"github.com/apex/log"
 )
 
 const (
-	BufferSize = 209715200 // 200MB in bytes
+	BufferSize       = 209715200 // 200MB in bytes
+	KinesisBatchSize = 1000      // Records per PutRecord call
 )
 
 type Extract struct {
-	SinkType   string
-	Connection *setup.Connection
+	SinkType string
+	Cfg      config.Config
 }
 
-func NewExtract(sinkType string, c *setup.Connection) *Extract {
+func NewExtract(sinkType string, c config.Config) *Extract {
 	return &Extract{sinkType, c}
 }
 
@@ -38,10 +39,10 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 	switch e.SinkType {
 	case "csv":
 		sink = sinks.NewCsvSink(e.Destination(), name, BufferSize)
-	case "s3":
-		sink = sinks.NewS3Sink(e.Destination(), name, BufferSize, e.Connection)
+	case "kinesis":
+		sink = sinks.NewKinesisSink(e.Destination(), name, KinesisBatchSize, e.Cfg)
 	default:
-		sink = sinks.NewS3Sink(e.Destination(), name, BufferSize, e.Connection)
+		sink = sinks.NewS3Sink(e.Destination(), name, BufferSize, e.Cfg)
 	}
 	log.Debug("Inside Perform Function")
 
@@ -113,7 +114,7 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 
 			if len(txt) > preambleLen {
 				parsed := txt[preambleLen : len(txt)-2] // Drop off ); at end of line
-				sink.Data(fmt.Sprintf("%s\n", parsed))  // add parsed line to the channel
+				sink.Data(parsed)                       // add parsed line to the channel
 			} else { // log out bad value strings and continue
 				log.Debug("BAD JOO JOO found in extraction")
 				log.Warn(fmt.Sprintf("%s\n", txt))
@@ -164,11 +165,11 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 // Connection from the skrape package
 // TODO create interfaces for Connection
 func (e *Extract) Connect() *sql.DB {
-	return e.Connection.Connect()
+	return e.Cfg.GetConn().Connect()
 }
 
 func (e *Extract) Destination() string {
-	path := e.Connection.Destination
+	path := e.Cfg.GetConn().Destination
 	var p string
 	if path[len(path)-1:] == "/" { // store path without trailing slash for consistency
 		p = path[:len(path)-1]
@@ -179,13 +180,13 @@ func (e *Extract) Destination() string {
 }
 
 func (e *Extract) Setup() []string {
-	return e.Connection.Setup()
+	return e.Cfg.GetConn().Setup()
 }
 
 func (e *Extract) Concurrency() int {
-	return e.Connection.Concurrency
+	return e.Cfg.GetConn().Concurrency
 }
 
 func (e *Extract) Database() string {
-	return e.Connection.Database
+	return e.Cfg.GetConn().Database
 }
