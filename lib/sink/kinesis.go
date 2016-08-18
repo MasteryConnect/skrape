@@ -82,6 +82,7 @@ func (s *KinesisSink) Write(wg *sync.WaitGroup) {
 // Write out the remaining messages to Kinesis
 func (s *KinesisSink) ReadFinished() {
 	s.putRecords()
+	log.WithField("count", len(s.records)).Info("Record count")
 }
 
 func (s *KinesisSink) Close() {
