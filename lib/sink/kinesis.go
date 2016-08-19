@@ -1,9 +1,11 @@
 package sink
 
 import (
+	"encoding/csv"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/MasteryConnect/skrape/lib/config"
 	"github.com/MasteryConnect/skrape/lib/mysqlutils"
@@ -18,11 +20,14 @@ import (
 type KinesisSink struct {
 	*SinkCore
 
-	Path    string
-	schema  *mysqlutils.Schema
-	records []*structs.Record
-	svc     *kinesis.Kinesis
-	stream  string
+	Path            string
+	schema          *mysqlutils.Schema
+	records         []*structs.Record
+	svc             *kinesis.Kinesis
+	stream          string
+	kinesisPutCount int64
+	kinesisErrCount int64
+	tickerDoneChan  chan bool
 }
 
 func NewKinesisSink(path, name string, batchSize int, cfg config.Config) *KinesisSink {
@@ -38,10 +43,11 @@ func NewKinesisSink(path, name string, batchSize int, cfg config.Config) *Kinesi
 	log.WithField("name", stream).Info("skrape to stream")
 
 	sink := &KinesisSink{
-		records:  make([]*structs.Record, 0, batchSize),
-		svc:      svc,
-		stream:   stream,
-		SinkCore: NewSinkCore(name, batchSize),
+		records:        make([]*structs.Record, 0, batchSize),
+		svc:            svc,
+		stream:         stream,
+		tickerDoneChan: make(chan bool),
+		SinkCore:       NewSinkCore(name, batchSize),
 	}
 
 	params := &kinesis.DescribeStreamInput{
@@ -59,6 +65,23 @@ func NewKinesisSink(path, name string, batchSize int, cfg config.Config) *Kinesi
 
 	sink.schema, _ = mysqlutils.TableSchema(cfg.GetConn(), name)
 
+	tickChan := time.NewTicker(time.Second * 10).C
+	go func() {
+		for {
+			select {
+			case <-tickChan:
+				log.WithFields(log.Fields{
+					"records":   len(sink.records),
+					"put count": sink.kinesisPutCount,
+					"put err":   sink.kinesisErrCount,
+					"dataChan":  len(sink.DataChan),
+				}).Info("Stats")
+			case <-sink.tickerDoneChan:
+				return
+			}
+		}
+	}()
+
 	return sink
 }
 
@@ -72,9 +95,18 @@ func (s *KinesisSink) Write(wg *sync.WaitGroup) {
 	}()
 
 	for msg := range s.DataChan {
-		s.addRecord(msg)
-		if len(s.records) == s.BufferSize {
-			s.putRecords()
+		err := s.addRecord(msg)
+		if err != nil {
+			log.WithFields(log.Fields{"err": err, "msg": msg}).Warn("Add record error")
+			return
+		}
+
+		if len(s.records) >= s.BufferSize {
+			err := s.putRecords()
+			if err != nil {
+				log.WithField("err", err).Warn("Put record error")
+				return
+			}
 		}
 	}
 }
@@ -82,6 +114,7 @@ func (s *KinesisSink) Write(wg *sync.WaitGroup) {
 // Write out the remaining messages to Kinesis
 func (s *KinesisSink) ReadFinished() {
 	s.putRecords()
+	s.tickerDoneChan <- true
 	log.WithField("count", len(s.records)).Info("Record count")
 }
 
@@ -91,9 +124,23 @@ func (s *KinesisSink) Close() {
 	s.schema = nil
 }
 
-func (s *KinesisSink) addRecord(msg string) {
-	values := strings.Split(msg, ",")
+func (s *KinesisSink) addRecord(msg string) error {
+	values, err := s.split(msg, s.schema.ColCount)
+	if err != nil {
+		return err
+	}
 	record := structs.Record{}
+
+	// if len(values) != s.schema.ColCount {
+	// 	log.WithFields(log.Fields{
+	// 		"values length": len(values),
+	// 		"column count":  s.schema.ColCount,
+	// 		"records":       len(s.records),
+	// 		"put count":     s.kinesisPutCount,
+	// 		"put err":       s.kinesisErrCount,
+	// 		"dataChan":      len(s.DataChan),
+	// 	}).Info("Column vs. values length mismatch")
+	// }
 
 	for i, field := range s.schema.Fields {
 		var v interface{}
@@ -109,13 +156,14 @@ func (s *KinesisSink) addRecord(msg string) {
 			v, _ = strconv.ParseFloat(val, 64)
 		default:
 			if val != "NULL" {
-				v = strings.Trim(val, "'")
+				v = val
 			}
 		}
 		record[field.Name] = v
 	}
 	s.records = append(s.records, &record)
 	log.WithField("record", record).Debug("New record")
+	return nil
 }
 
 func (this *KinesisSink) putRecords() error {
@@ -173,7 +221,10 @@ func (this *KinesisSink) _dump(recordsToDump []*structs.Record) (retryIdx []int,
 	// Pretty-print the response data.
 	log.WithField("resp", resp).Debug("Kinesis response")
 
+	putCount := int64(len(recordsToDump))
 	if *resp.FailedRecordCount > 0 {
+		this.kinesisErrCount += *resp.FailedRecordCount
+		putCount -= *resp.FailedRecordCount
 		log.WithFields(log.Fields{
 			"count": *resp.FailedRecordCount,
 		}).Warn("failed records")
@@ -190,6 +241,7 @@ func (this *KinesisSink) _dump(recordsToDump []*structs.Record) (retryIdx []int,
 			}
 		}
 	}
+	this.kinesisPutCount += putCount
 
 	return
 }
@@ -206,4 +258,13 @@ func (this *KinesisSink) createStream(streamName string) error {
 		return err
 	}
 	return nil
+}
+
+func (this *KinesisSink) split(msg string, count int) ([]string, error) {
+	newMsg := strings.Replace(msg, "\\\"", "\"\"", -1)
+	newMsg = strings.Replace(newMsg, ",'", ",\"", -1)
+	newMsg = strings.Replace(newMsg, "',", "\",", -1)
+	r := csv.NewReader(strings.NewReader(newMsg))
+
+	return r.Read()
 }

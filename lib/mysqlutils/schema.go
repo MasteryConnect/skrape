@@ -8,7 +8,8 @@ import (
 )
 
 type Schema struct {
-	Fields []Field `json:"fields"`
+	Fields   []Field `json:"fields"`
+	ColCount int     `json:"-"`
 }
 
 type Paths struct {
@@ -24,7 +25,7 @@ type Field struct {
 // Get the table schema
 func TableSchema(conn *setup.Connection, tableName string) (*Schema, *Paths) {
 	db := conn.Connect()
-	schema := Schema{[]Field{}}
+	schema := Schema{Fields: []Field{}}
 	paths := Paths{[]string{}}
 
 	defer db.Close()
@@ -41,6 +42,8 @@ func TableSchema(conn *setup.Connection, tableName string) (*Schema, *Paths) {
 		paths.JsonPaths = append(paths.JsonPaths, fmt.Sprintf("$['%s']", f.Name))
 		schema.Fields = append(schema.Fields, f)
 	}
+
+	schema.ColCount = len(schema.Fields)
 
 	return &schema, &paths
 }
