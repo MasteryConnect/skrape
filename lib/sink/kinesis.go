@@ -130,6 +130,7 @@ func (s *KinesisSink) addRecord(msg string) error {
 		return err
 	}
 	record := structs.Record{}
+	record["deltatype"] = "1" // Create record
 
 	// if len(values) != s.schema.ColCount {
 	// 	log.WithFields(log.Fields{
@@ -168,16 +169,15 @@ func (s *KinesisSink) addRecord(msg string) error {
 
 func (this *KinesisSink) putRecords() error {
 	var recordsToDump []*structs.Record
-	records := this.records
 
 	// chunk up big batches in case we get a failure and need to retry
-	for len(records) > 0 {
-		if len(records) > 500 {
-			recordsToDump = records[:500]
-			records = records[500:]
+	for len(this.records) > 0 {
+		if len(this.records) > 500 {
+			recordsToDump = this.records[:500]
+			this.records = this.records[500:]
 		} else {
-			recordsToDump = records[:]
-			records = records[:0]
+			recordsToDump = this.records[:]
+			this.records = this.records[:0]
 		}
 
 		retryIdx, err := this._dump(recordsToDump)
@@ -187,7 +187,7 @@ func (this *KinesisSink) putRecords() error {
 
 		for _, idx := range retryIdx {
 			// prepend any records to retry
-			records = append(recordsToDump[idx:idx+1], records...)
+			this.records = append(recordsToDump[idx:idx+1], this.records...)
 		}
 	}
 
