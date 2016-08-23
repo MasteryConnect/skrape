@@ -57,7 +57,7 @@ func NewKinesisSink(path, name string, batchSize int, cfg config.Config) *Kinesi
 
 	if err != nil {
 		// try creating the stream
-		err = sink.createStream(stream)
+		err = sink.createStream(stream, k.GetShardCount())
 		if err != nil {
 			panic(err)
 		}
@@ -246,11 +246,11 @@ func (this *KinesisSink) _dump(recordsToDump []*structs.Record) (retryIdx []int,
 	return
 }
 
-func (this *KinesisSink) createStream(streamName string) error {
+func (this *KinesisSink) createStream(streamName string, shardCount int) error {
 	log.WithField("name", streamName).Info("create stream")
 	params := &kinesis.CreateStreamInput{
-		ShardCount: aws.Int64(1),           // Required
-		StreamName: aws.String(streamName), // Required
+		ShardCount: aws.Int64(int64(shardCount)), // Required
+		StreamName: aws.String(streamName),       // Required
 	}
 
 	_, err := this.svc.CreateStream(params)

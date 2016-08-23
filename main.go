@@ -33,6 +33,7 @@ var (
 	exclude               cli.StringSlice
 	kinesisStreamName     string
 	kinesisStreamEndpoint string
+	kinesisShardCount     int
 )
 
 func init() {
@@ -150,6 +151,13 @@ func main() {
 					Usage:       "Kinesis stream URL endpoint",
 					Destination: &kinesisStreamEndpoint,
 				},
+
+				cli.IntFlag{
+					Name:        "c, shard-count",
+					Usage:       "number of shards for this stream",
+					Value:       1,
+					Destination: &kinesisShardCount,
+				},
 			},
 			Action: func(c *cli.Context) error {
 				return action(c, "kinesis")
@@ -174,7 +182,7 @@ func action(c *cli.Context, sinkType string) error {
 
 	mysqlutils.VerifyMysqldump(mysqlDumpPath)                                                      // make sure that mysqldump is installed
 	connect := setup.NewConnection(host, user, port, database, dest, pool, matchTables, skrapePwd) // new connection struct
-	extract := skrape.NewExtract(sinkType, config.NewConfig(connect, kinesisStreamEndpoint, kinesisStreamName))
+	extract := skrape.NewExtract(sinkType, config.NewConfig(connect, kinesisStreamEndpoint, kinesisStreamName, kinesisShardCount))
 	if !connect.Missing() {
 		log.Error("Missing credentials for database connection")
 		os.Exit(1)
