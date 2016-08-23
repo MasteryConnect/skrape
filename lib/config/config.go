@@ -17,9 +17,10 @@ type config struct {
 	Connection *setup.Connection
 }
 
-func NewConfig(c *setup.Connection, kinesisStreamEndpoint, kinesisStreamName string, kinesisShardCount int) Config {
+func NewConfig(c *setup.Connection, region, kinesisStreamEndpoint, kinesisStreamName string, kinesisShardCount int) Config {
 	return &config{
 		Connection: c,
+		Aws:        NewAws(region),
 		Kinesis:    NewKinesis(kinesisStreamEndpoint, kinesisStreamName, kinesisShardCount),
 	}
 }
