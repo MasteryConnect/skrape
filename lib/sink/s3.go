@@ -43,7 +43,7 @@ func (s *S3Sink) Schema() {
 	schema, paths := mysqlutils.TableSchema(s.Cfg.GetConn(), s.Name)
 
 	schemaname := s.Name + ".json"
-	pathsname := s.Name + "paths.json"
+	pathsname := s.Name + "_paths.json"
 	schemafile, _ := os.Create(s.Path + "/" + schemaname)
 	pathsfile, _ := os.Create(s.Path + "/" + pathsname)
 
