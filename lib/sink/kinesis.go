@@ -125,23 +125,12 @@ func (s *KinesisSink) Close() {
 }
 
 func (s *KinesisSink) addRecord(msg string) error {
-	values, err := s.split(msg, s.schema.ColCount)
+	values, err := s.split(msg)
 	if err != nil {
 		return err
 	}
 	record := structs.Record{}
 	record["deltatype"] = "1" // Create record
-
-	// if len(values) != s.schema.ColCount {
-	// 	log.WithFields(log.Fields{
-	// 		"values length": len(values),
-	// 		"column count":  s.schema.ColCount,
-	// 		"records":       len(s.records),
-	// 		"put count":     s.kinesisPutCount,
-	// 		"put err":       s.kinesisErrCount,
-	// 		"dataChan":      len(s.DataChan),
-	// 	}).Info("Column vs. values length mismatch")
-	// }
 
 	for i, field := range s.schema.Fields {
 		var v interface{}
@@ -260,11 +249,8 @@ func (this *KinesisSink) createStream(streamName string, shardCount int) error {
 	return nil
 }
 
-func (this *KinesisSink) split(msg string, count int) ([]string, error) {
-	newMsg := strings.Replace(msg, "\\\"", "\"\"", -1)
-	newMsg = strings.Replace(newMsg, ",'", ",\"", -1)
-	newMsg = strings.Replace(newMsg, "',", "\",", -1)
-	r := csv.NewReader(strings.NewReader(newMsg))
+func (this *KinesisSink) split(msg string) ([]string, error) {
+	r := csv.NewReader(strings.NewReader(msg))
 
 	return r.Read()
 }
