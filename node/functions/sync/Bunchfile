@@ -1,0 +1,8 @@
+github.com/MasteryConnect/skrape !self
+github.com/apex/log
+github.com/lib/pq
+github.com/apex/go-apex
+github.com/aws/aws-sdk-go/aws
+github.com/aws/aws-sdk-go/aws/session
+github.com/aws/aws-sdk-go/service/s3
+github.com/aws/aws-sdk-go/service/kms
