@@ -80,7 +80,7 @@ func main() {
 			Destination: &table,
 		},
 		cli.StringFlag{
-			Name:        "mysqldump-path",
+			Name:        "m, mysqldump-path",
 			Usage:       "set the path for the location of the mysqldump binary (defaults to typical locations for mac/linux)",
 			Value:       "",
 			Destination: &mysqlDumpPath,
@@ -98,13 +98,13 @@ func main() {
 			Destination: &pool,
 		},
 		cli.StringSliceFlag{
-			Name:  "priority",
-			Usage: "declare larger tables as priority (will start these tables exporting first)",
+			Name:  "f, priority",
+			Usage: "declare larger tables as priority (will start these tables exporting first). This can be a comma seperated list of tables, and/or multiple --priority args with table names or a list of table names",
 			Value: &priority,
 		},
 		cli.StringSliceFlag{
-			Name:  "exclude",
-			Usage: "exclude tables from the export",
+			Name:  "x, exclude",
+			Usage: "exclude tables from the export. This can be a comma seperated list of tables, and/or multiple --exclude args with table names or a list of table names",
 			Value: &exclude,
 		},
 		cli.BoolFlag{
@@ -212,7 +212,10 @@ func action(c *cli.Context, sinkType string) error {
 		chn <- true
 
 	} else {
-		extract.TableHandler(priority, exclude)
+		extract.TableHandler(
+			utility.ExtractAndAppendCommaDelimitedStrings(priority),
+			utility.ExtractAndAppendCommaDelimitedStrings(exclude),
+		)
 	}
 
 	return nil
