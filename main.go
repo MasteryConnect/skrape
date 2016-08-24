@@ -12,7 +12,7 @@ import (
 	"github.com/apex/log"
 	"github.com/apex/log/handlers/level"
 	"github.com/apex/log/handlers/text"
-	"github.com/codegangsta/cli"
+	"gopkg.in/urfave/cli.v1"
 )
 
 const Concurrency = 10
