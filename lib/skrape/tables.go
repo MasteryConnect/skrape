@@ -83,7 +83,7 @@ func (e *Extract) Schema(t *Table) {
 	schema := Schema{[]Field{}}
 	paths := Paths{[]string{}}
 	schemaname := t.Name + ".json"
-	pathsname := t.Name + "paths.json"
+	pathsname := t.Name + "_paths.json"
 	schemafile, _ := os.Create(t.Path + "/" + schemaname)
 	pathsfile, _ := os.Create(t.Path + "/" + pathsname)
 
