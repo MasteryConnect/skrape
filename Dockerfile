@@ -6,6 +6,7 @@ WORKDIR /src
 
 RUN apk add -U \
   bash\
+  ca-certificates\
   mysql-client\
   openssl\
   wget\

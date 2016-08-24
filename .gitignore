@@ -28,3 +28,5 @@ out.txt
 .envrc
 
 mysql-cnf.cnf
+run_skrape.sh
+aws_install.sh

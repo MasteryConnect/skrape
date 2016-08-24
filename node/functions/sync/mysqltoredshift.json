@@ -1,0 +1,156 @@
+{
+  [
+    {
+      "from": "bigint",
+      "to": "int8"
+    },
+    {
+      "from": "bigint unsigned",
+      "to": "numeric(20,0)"
+    },
+    {
+      "from": "binary",
+      "to": "varchar"
+    },
+    {
+      "from": "bit",
+      "to": "int8",
+    },
+    {
+      "from": "blob",
+      "to": "varchar(max)",
+    },
+    {
+      "from": "bool",
+      "to": "int2"
+    },
+    {
+      "from": "char",
+      "to": "varchar"
+    },
+    {
+      "from": "date",
+      "to": "date"
+    },
+    {
+      "from": "datetime",
+      "to": "timestamp"
+    },
+    {
+      "from": "decimal",
+      "to": "numeric"
+    },
+    {
+      "from": "decimal unsigned",
+      "to": "numeric"
+    },
+    {
+      "from": "double",
+      "to": "float8",
+    },
+    {
+      "from": "double unsigned",
+      "to": "float8"
+    },
+    {
+      "from": "enum",
+      "to": "varchar"
+    },
+    {
+      "from": "fixed",
+      "to": "numeric"
+    },
+    {
+      "from": "fixed unsigned",
+      "to": "numeric"
+    },
+    {
+      "from": "float",
+      "to": "float4"
+    },
+    {
+      "from": "int",
+      "to": "int4"
+    },
+    {
+      "from": "int unsigned",
+      "to": "int8"
+    },
+    {
+      "from": "longblob",
+      "to": "varchar"
+    },
+    {
+      "from": "longtext"
+      "to": "varchar(max)"
+    },
+    {
+      "from": "mediumblob",
+      "to": "varchar"
+    },
+    {
+      "from": "mediumint",
+      "to": "int4"
+    },
+    {
+      "from": "mediumint unsigned",
+      "to": "int4"
+    },
+    {
+      "from": "mediumtext",
+      "to": "varchar(max)"
+    },
+    {
+      "from": "numeric",
+      "to": "numeric"
+    },
+    {
+      "from": "set",
+      "to": "varchar"
+    },
+    {
+      "from": "smallint",
+      "to": "int2"
+    },
+    {
+      "from": "smallint unsigned",
+      "to": "int4"
+    },
+    {
+      "from": "text",
+      "to": "varchar(max)"
+    },
+    {
+      "from": "time",
+      "to": "timestamp"
+    },
+    {
+      "from": "timestamp",
+      "to": "timestamp"
+    },
+    {
+      "from": "tinyblob",
+      "to": "varchar"
+    },
+    {
+      "from": "tinyint",
+      "to": "int2"
+    },
+    {
+      "from": "tinyint unsigned",
+      "to": "int2"
+    },
+    {
+      "from": "tinytext",
+      "to": "varchar(max)"
+    },
+    {
+      "from": "varbinary",
+      "to": "varchar(max)"
+    },
+    {
+      "from": "year",
+      "to": "date"
+    }
+  ]
+}
