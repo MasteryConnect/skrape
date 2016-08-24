@@ -1,5 +1,5 @@
 github.com/MasteryConnect/skrape !self
-github.com/codegangsta/cli
+gopkg.in/urfave/cli.v1
 github.com/apex/log
 github.com/go-sql-driver/mysql
 golang.org/x/crypto/ssh/terminal

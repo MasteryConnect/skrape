@@ -10,27 +10,41 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MasteryConnect/skrape/lib/config"
 	utils "github.com/MasteryConnect/skrape/lib/mysqlutils"
-	"github.com/MasteryConnect/skrape/lib/setup"
-	"github.com/MasteryConnect/skrape/lib/skrape/skrapes3"
+	sinks "github.com/MasteryConnect/skrape/lib/sink"
+	"github.com/MasteryConnect/skrape/lib/utility"
 	"github.com/apex/log"
 )
 
 const (
-	BufferSize = 209715200 // 200MB in bytes
+	BufferSize       = 209715200 // 200MB in bytes
+	KinesisBatchSize = 1000      // Records per PutRecord call
 )
 
 type Extract struct {
-	Connection *setup.Connection
+	SinkType string
+	Cfg      config.Config
 }
 
-func NewExtract(c *setup.Connection) *Extract {
-	return &Extract{c}
+func NewExtract(sinkType string, c config.Config) *Extract {
+	return &Extract{sinkType, c}
 }
 
 func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the export from MySQL RDBMS to CSV files
 	elapsed := time.Now()
+	// Source
 	table := NewTable(e.Destination(), name)
+	// Sink
+	var sink sinks.Sink
+	switch e.SinkType {
+	case "csv":
+		sink = sinks.NewCsvSink(e.Destination(), name, BufferSize)
+	case "kinesis":
+		sink = sinks.NewKinesisSink(e.Destination(), name, KinesisBatchSize, e.Cfg)
+	default:
+		sink = sinks.NewS3Sink(e.Destination(), name, BufferSize, e.Cfg)
+	}
 	log.Debug("Inside Perform Function")
 
 	defer func() {
@@ -69,7 +83,7 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 	// Here we start the writer and set it up to wait for the channel to receive
 	// data from the reader below
 	wait.Add(1)
-	go table.Write(&wait)
+	go sink.Write(&wait)
 
 	// This will increase the buffer size for bufio.Scanner to allow for
 	// token sizes (lines) up to 1MB in size.
@@ -100,8 +114,8 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 			}
 
 			if len(txt) > preambleLen {
-				parsed := txt[preambleLen : len(txt)-2]   // Drop off ); at end of line
-				table.Data <- fmt.Sprintf("%s\n", parsed) // add parsed line to the channel
+				parsed := txt[preambleLen : len(txt)-2]           // Drop off ); at end of line
+				sink.Data(utility.MysqlInsertValuesToCsv(parsed)) // add parsed line to the channel
 			} else { // log out bad value strings and continue
 				log.Debug("BAD JOO JOO found in extraction")
 				log.Warn(fmt.Sprintf("%s\n", txt))
@@ -111,7 +125,7 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 		if scanner.Err() != nil {
 			log.WithError(scanner.Err()).Fatal("There was an error while reading the mysqldump output")
 		}
-		close(table.Data) // closes the channel once the read opertaion is completed
+		sink.EndOfData() // closes the channel once the read operation is completed
 		log.WithField("TableName", name).Debug("Just closed the table data channel")
 	}()
 
@@ -135,7 +149,6 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 	wait.Wait()
 
 	err = cmd.Wait()
-	table.File.Close()
 	log.Debugf("mysqldump %s", cmd.ProcessState.String())
 	log.Debugf("mysqldump completed for %s", name)
 	if err != nil {
@@ -145,30 +158,36 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 			"line": line,
 		}).Error(err.Error())
 	}
-	log.WithField("TableName", name).Info("Uploading file")
-	skrapes3.Gzipload(table.Name, table.Path)
-	e.Schema(table)
+	sink.ReadFinished()
+	sink.Close()
 }
 
 // Abstraction functions for disconnecting
 // Connection from the skrape package
 // TODO create interfaces for Connection
 func (e *Extract) Connect() *sql.DB {
-	return e.Connection.Connect()
+	return e.Cfg.GetConn().Connect()
 }
 
 func (e *Extract) Destination() string {
-	return e.Connection.Destination
+	path := e.Cfg.GetConn().Destination
+	var p string
+	if path[len(path)-1:] == "/" { // store path without trailing slash for consistency
+		p = path[:len(path)-1]
+	} else {
+		p = path
+	}
+	return p
 }
 
 func (e *Extract) Setup() []string {
-	return e.Connection.Setup()
+	return e.Cfg.GetConn().Setup()
 }
 
 func (e *Extract) Concurrency() int {
-	return e.Connection.Concurrency
+	return e.Cfg.GetConn().Concurrency
 }
 
 func (e *Extract) Database() string {
-	return e.Connection.Database
+	return e.Cfg.GetConn().Database
 }

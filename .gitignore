@@ -28,5 +28,9 @@ out.txt
 .envrc
 
 mysql-cnf.cnf
+
+.vendor
+*.csv
+.aws*
 run_skrape.sh
 aws_install.sh
