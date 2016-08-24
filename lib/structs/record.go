@@ -7,14 +7,14 @@ import (
 
 type Record map[string]interface{}
 
-func (this *Record) GetID() string {
-	return fmt.Sprintf("%d", (*this)["id"])
+func (rec *Record) GetID() string {
+	return fmt.Sprintf("%d", (*rec)["id"])
 }
 
-func (this Record) String() string {
-	return fmt.Sprintf("%15s", this["id"])
+func (rec Record) String() string {
+	return fmt.Sprintf("%15s", rec["id"])
 }
 
-func (this *Record) Json() ([]byte, error) {
-	return json.Marshal(this)
+func (rec *Record) Json() ([]byte, error) {
+	return json.Marshal(rec)
 }
