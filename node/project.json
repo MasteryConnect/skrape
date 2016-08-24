@@ -1,0 +1,9 @@
+
+{
+  "name": "schema_syncify",
+  "description": "Maintain synchronicity between redshift and mc production tables",
+  "memory": 128,
+  "timeout": 5,
+  "role": "arn:aws:iam::226989638317:role/schema_syncify_lambda_function",
+  "environment": {}
+}
