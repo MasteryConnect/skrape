@@ -41,7 +41,7 @@ func init() {
 }
 
 func main() {
-	log.SetHandler(level.New(text.New(os.Stdout), log.DebugLevel))
+	log.SetHandler(level.New(text.New(os.Stdout), log.InfoLevel))
 
 	app := cli.NewApp()
 	app.Name = "skrape"
