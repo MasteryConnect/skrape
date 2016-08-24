@@ -64,8 +64,20 @@ func StrDelFrmSlc(a string, b []string) []string {
 	return b
 }
 
+// Convert Mysql INSERT values list into the correct CSV format
 func MysqlInsertValuesToCsv(values string) string {
 	csv := strings.Replace(values, "\\\"", "\"\"", -1)
 	csv = strings.Replace(csv, ",'", ",\"", -1)
 	return strings.Replace(csv, "',", "\",", -1)
+}
+
+// Check the array for strings with commas. If a string with commas is found
+// split it up and append to the array. Example: and array with
+// [a,b c d,e] ends up looking like [a b c d e]
+func ExtractAndAppendCommaDelimitedStrings(values []string) []string {
+	var newValues []string
+	for _, val := range values {
+		newValues = append(newValues, strings.Split(val, ",")...)
+	}
+	return newValues
 }
