@@ -25,6 +25,6 @@ func NewConfig(c *setup.Connection, region, kinesisStreamEndpoint, kinesisStream
 	}
 }
 
-func (this *config) GetConn() *setup.Connection {
-	return this.Connection
+func (c *config) GetConn() *setup.Connection {
+	return c.Connection
 }

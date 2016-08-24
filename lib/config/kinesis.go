@@ -12,8 +12,8 @@ type kinesis struct {
 
 const REPLACE = "{TABLE_NAME}"
 
-func (this *config) GetKinesis() *kinesis {
-	return this.Kinesis
+func (c *config) GetKinesis() *kinesis {
+	return c.Kinesis
 }
 
 func NewKinesis(endpoint, name string, shardCount int) *kinesis {
@@ -24,18 +24,18 @@ func NewKinesis(endpoint, name string, shardCount int) *kinesis {
 	}
 }
 
-func (this *kinesis) GetEndpoint() string {
-	return this.Endpoint
+func (k *kinesis) GetEndpoint() string {
+	return k.Endpoint
 }
 
-func (this *kinesis) GetShardCount() int {
-	return this.ShardCount
+func (k *kinesis) GetShardCount() int {
+	return k.ShardCount
 }
 
-func (this *kinesis) GetStream(table string) string {
-	if strings.Contains(this.StreamName, REPLACE) {
-		return strings.Replace(this.StreamName, REPLACE, table, -1)
+func (k *kinesis) GetStream(table string) string {
+	if strings.Contains(k.StreamName, REPLACE) {
+		return strings.Replace(k.StreamName, REPLACE, table, -1)
 	} else {
-		return this.StreamName
+		return k.StreamName
 	}
 }

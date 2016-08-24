@@ -156,36 +156,36 @@ func (s *KinesisSink) addRecord(msg string) error {
 	return nil
 }
 
-func (this *KinesisSink) putRecords() error {
+func (ks *KinesisSink) putRecords() error {
 	var recordsToDump []*structs.Record
 
 	// chunk up big batches in case we get a failure and need to retry
-	for len(this.records) > 0 {
-		if len(this.records) > 500 {
-			recordsToDump = this.records[:500]
-			this.records = this.records[500:]
+	for len(ks.records) > 0 {
+		if len(ks.records) > 500 {
+			recordsToDump = ks.records[:500]
+			ks.records = ks.records[500:]
 		} else {
-			recordsToDump = this.records[:]
-			this.records = this.records[:0]
+			recordsToDump = ks.records[:]
+			ks.records = ks.records[:0]
 		}
 
-		retryIdx, err := this._dump(recordsToDump)
+		retryIdx, err := ks._dump(recordsToDump)
 		if err != nil {
 			return err
 		}
 
 		for _, idx := range retryIdx {
 			// prepend any records to retry
-			this.records = append(recordsToDump[idx:idx+1], this.records...)
+			ks.records = append(recordsToDump[idx:idx+1], ks.records...)
 		}
 	}
 
 	return nil
 }
 
-func (this *KinesisSink) _dump(recordsToDump []*structs.Record) (retryIdx []int, err error) {
+func (ks *KinesisSink) _dump(recordsToDump []*structs.Record) (retryIdx []int, err error) {
 	params := &kinesis.PutRecordsInput{
-		StreamName: aws.String(this.stream), // Required
+		StreamName: aws.String(ks.stream), // Required
 	}
 
 	for _, r := range recordsToDump {
@@ -199,7 +199,7 @@ func (this *KinesisSink) _dump(recordsToDump []*structs.Record) (retryIdx []int,
 		})
 		log.WithField("dump:", (*r).String()).Debug("record")
 	}
-	resp, err := this.svc.PutRecords(params)
+	resp, err := ks.svc.PutRecords(params)
 
 	if err != nil {
 		// Print the error, cast err to awserr.Error to get the Code and
@@ -212,7 +212,7 @@ func (this *KinesisSink) _dump(recordsToDump []*structs.Record) (retryIdx []int,
 
 	putCount := int64(len(recordsToDump))
 	if *resp.FailedRecordCount > 0 {
-		this.kinesisErrCount += *resp.FailedRecordCount
+		ks.kinesisErrCount += *resp.FailedRecordCount
 		putCount -= *resp.FailedRecordCount
 		log.WithFields(log.Fields{
 			"count": *resp.FailedRecordCount,
@@ -230,26 +230,26 @@ func (this *KinesisSink) _dump(recordsToDump []*structs.Record) (retryIdx []int,
 			}
 		}
 	}
-	this.kinesisPutCount += putCount
+	ks.kinesisPutCount += putCount
 
 	return
 }
 
-func (this *KinesisSink) createStream(streamName string, shardCount int) error {
+func (ks *KinesisSink) createStream(streamName string, shardCount int) error {
 	log.WithField("name", streamName).Info("create stream")
 	params := &kinesis.CreateStreamInput{
 		ShardCount: aws.Int64(int64(shardCount)), // Required
 		StreamName: aws.String(streamName),       // Required
 	}
 
-	_, err := this.svc.CreateStream(params)
+	_, err := ks.svc.CreateStream(params)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (this *KinesisSink) split(msg string) ([]string, error) {
+func (ks *KinesisSink) split(msg string) ([]string, error) {
 	r := csv.NewReader(strings.NewReader(msg))
 
 	return r.Read()
