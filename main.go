@@ -10,7 +10,6 @@ import (
 	"github.com/MasteryConnect/skrape/lib/skrape"
 	"github.com/MasteryConnect/skrape/lib/utility"
 	"github.com/apex/log"
-	"github.com/apex/log/handlers/level"
 	"github.com/apex/log/handlers/text"
 	"gopkg.in/urfave/cli.v1"
 )
@@ -29,6 +28,7 @@ var (
 	pool                  int
 	matchTables           bool
 	skrapePwd             bool
+	debug                 bool
 	priority              cli.StringSlice
 	exclude               cli.StringSlice
 	kinesisStreamName     string
@@ -41,7 +41,7 @@ func init() {
 }
 
 func main() {
-	log.SetHandler(level.New(text.New(os.Stdout), log.InfoLevel))
+	log.SetHandler(text.New(os.Stdout))
 
 	app := cli.NewApp()
 	app.Name = "skrape"
@@ -118,6 +118,11 @@ func main() {
 			Destination: &skrapePwd,
 			EnvVar:      "SKRAPE_PWD",
 		},
+		cli.BoolFlag{
+			Name:        "d, debug",
+			Usage:       "turn on debug logging",
+			Destination: &debug,
+		},
 	}
 	// Commands available. Defaults to s3 if no command given
 	app.Commands = []cli.Command{
@@ -178,6 +183,9 @@ func main() {
 }
 
 func action(c *cli.Context, sinkType string) error {
+	if debug {
+		log.SetLevel(log.DebugLevel)
+	}
 	start := time.Now()
 	defer utility.Cleanup(setup.DefaultFile)
 	defer func(start time.Time) { // Displays duration of run time
