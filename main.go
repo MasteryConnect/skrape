@@ -46,7 +46,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "skrape"
 	app.Usage = "export MySQL RDBMS tables"
-	app.Version = "1.0"
+	app.Version = "1.2"
 	// Global flags used by every command
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
