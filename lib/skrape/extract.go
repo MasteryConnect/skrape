@@ -122,7 +122,7 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 				continue
 			}
 		}
-		if scanner.Err() != nil {
+		if err := scanner.Err(); err != nil {
 			log.WithError(scanner.Err()).Fatal("There was an error while reading the mysqldump output")
 		}
 		sink.EndOfData() // closes the channel once the read operation is completed
