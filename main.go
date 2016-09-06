@@ -40,7 +40,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "skrape"
 	app.Usage = "export MySQL RDBMS tables to csv files"
-	app.Version = "1.0"
+	app.Version = "1.1"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:        "u, username",
