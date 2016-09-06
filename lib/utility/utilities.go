@@ -3,6 +3,7 @@ package utility
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 func Cleanup(path string) {
@@ -61,4 +62,11 @@ func StrDelFrmSlc(a string, b []string) []string {
 		}
 	}
 	return b
+}
+
+// Convert Mysql INSERT values list into the correct CSV format
+func MysqlInsertValuesToCsv(values string) string {
+	csv := strings.Replace(values, "\\\"", "\"\"", -1)
+	csv = strings.Replace(csv, ",'", ",\"", -1)
+	return strings.Replace(csv, "',", "\",", -1)
 }

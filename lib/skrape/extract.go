@@ -13,6 +13,7 @@ import (
 	utils "github.com/MasteryConnect/skrape/lib/mysqlutils"
 	"github.com/MasteryConnect/skrape/lib/setup"
 	"github.com/MasteryConnect/skrape/lib/skrape/skrapes3"
+	"github.com/MasteryConnect/skrape/lib/utility"
 	"github.com/apex/log"
 )
 
@@ -100,8 +101,8 @@ func (e *Extract) Perform(semaphore chan bool, name string) { // Perform the exp
 			}
 
 			if len(txt) > preambleLen {
-				parsed := txt[preambleLen : len(txt)-2]   // Drop off ); at end of line
-				table.Data <- fmt.Sprintf("%s\n", parsed) // add parsed line to the channel
+				parsed := txt[preambleLen : len(txt)-2]                                   // Drop off ); at end of line
+				table.Data <- fmt.Sprintf("%s\n", utility.MysqlInsertValuesToCsv(parsed)) // add parsed line to the channel
 			} else { // log out bad value strings and continue
 				log.Debug("BAD JOO JOO found in extraction")
 				log.Warn(fmt.Sprintf("%s\n", txt))
